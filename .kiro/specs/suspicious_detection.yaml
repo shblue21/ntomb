@@ -1,0 +1,476 @@
+version: 1
+entity: suspicious_detection
+description: |
+  Defines detection rules for identifying suspicious, anomalous, or interesting network 
+  behavior in ntomb. These rules are applied to connections and endpoints to flag potential 
+  security issues, performance problems, or unusual patterns that warrant investigation.
+
+defaults:
+  thresholds:
+    long_lived_connection_sec: 600
+    short_lived_connection_sec: 5
+    high_port_threshold: 49152
+    many_connections_threshold: 50
+    rapid_connection_rate_per_min: 30
+    large_data_transfer_bytes: 104857600  # 100 MB
+    
+  severity_display:
+    show_low: false
+    show_medium: true
+    show_high: true
+    show_critical: true
+    
+  private_ip_treatment:
+    rfc1918_less_suspicious: true
+    localhost_less_suspicious: true
+    link_local_less_suspicious: true
+
+rules:
+  - id: long_lived_connection
+    name: "Long-Lived Established Connection"
+    description: |
+      Detects connections that have been in ESTABLISHED state for an unusually long time.
+      This can indicate persistent backdoors, C2 channels, or legitimate but unusual 
+      long-polling connections.
+    severity: medium
+    tags:
+      - persistence
+      - beacon
+      - anomaly
+    match:
+      state: ESTABLISHED
+      duration_gte_sec: 600
+      direction: outbound
+    effects:
+      add_tag:
+        - long_lived
+        - persistent
+      highlight_style: yellow_glow
+      icon_hint: ghost
+
+  - id: high_port_beaconing
+    name: "High-Port Beaconing Pattern"
+    description: |
+      Detects frequent outbound connections to the same remote IP on high-numbered ports 
+      (>49152), which may indicate beaconing behavior or C2 communication.
+    severity: high
+    tags:
+      - beacon
+      - c2
+      - exfiltration
+    match:
+      direction: outbound
+      remote_port_gte: 49152
+      connection_count_gte: 10
+      rate_per_minute_gte: 5
+      state_in:
+        - ESTABLISHED
+        - SYN_SENT
+    effects:
+      add_tag:
+        - beacon
+        - high_port
+        - suspicious
+      highlight_style: red_glow
+      icon_hint: skull
+
+  - id: suspicious_external_country
+    name: "Connection to Suspicious Country"
+    description: |
+      Flags connections to countries that are uncommon or unexpected for this environment.
+      Useful for detecting data exfiltration or compromised systems communicating with 
+      foreign command and control servers.
+    severity: high
+    tags:
+      - geolocation
+      - exfiltration
+      - suspicious
+    match:
+      direction: outbound
+      remote_country_not_in:
+        - US
+        - CA
+        - GB
+        - DE
+        - FR
+        - NL
+        - IE
+        - AU
+      state: ESTABLISHED
+      exclude_private_ips: true
+    effects:
+      add_tag:
+        - foreign
+        - suspicious
+        - geolocation_alert
+      highlight_style: orange_glow
+      icon_hint: skull
+
+  - id: unexpected_listener
+    name: "Unexpected High-Port Listener"
+    description: |
+      Detects processes listening on non-standard high ports, which could indicate 
+      backdoors, unauthorized services, or misconfigurations.
+    severity: medium
+    tags:
+      - listener
+      - backdoor
+      - anomaly
+    match:
+      state: LISTEN
+      local_port_gte: 8000
+      local_port_lte: 65535
+      exclude_well_known_ports:
+        - 8080
+        - 8443
+        - 9090
+        - 3000
+        - 5000
+    effects:
+      add_tag:
+        - unexpected_listener
+        - high_port
+      highlight_style: yellow_glow
+      icon_hint: pumpkin
+
+  - id: many_short_lived_connections
+    name: "Rapid Short-Lived Connections"
+    description: |
+      Detects many connections that open and close quickly, which may indicate port 
+      scanning, connection pool exhaustion, or aggressive retry behavior.
+    severity: medium
+    tags:
+      - scanning
+      - anomaly
+      - performance
+    match:
+      connection_count_gte: 20
+      duration_lte_sec: 5
+      rate_per_minute_gte: 30
+      state_in:
+        - TIME_WAIT
+        - CLOSE_WAIT
+        - CLOSED
+    effects:
+      add_tag:
+        - short_lived
+        - rapid_connections
+        - scanning
+      highlight_style: orange_glow
+      icon_hint: ghost
+
+  - id: unusual_protocol_mix
+    name: "Unusual Protocol Mix"
+    description: |
+      Detects when a process that normally uses one protocol (e.g., TCP HTTP) suddenly 
+      starts using unusual protocols or port combinations (e.g., random high UDP ports).
+    severity: medium
+    tags:
+      - anomaly
+      - protocol_violation
+      - suspicious
+    match:
+      protocol: UDP
+      remote_port_gte: 49152
+      direction: outbound
+      exclude_common_udp_ports:
+        - 53    # DNS
+        - 123   # NTP
+        - 161   # SNMP
+        - 514   # Syslog
+        - 67    # DHCP
+        - 68    # DHCP
+    effects:
+      add_tag:
+        - unusual_protocol
+        - high_port_udp
+      highlight_style: yellow_glow
+      icon_hint: ghost
+
+  - id: excessive_close_wait
+    name: "Excessive CLOSE_WAIT Connections"
+    description: |
+      Detects many connections stuck in CLOSE_WAIT state, indicating the application 
+      is not properly closing sockets. This is a resource leak and performance issue.
+    severity: medium
+    tags:
+      - resource_leak
+      - performance
+      - debug
+    match:
+      state: CLOSE_WAIT
+      connection_count_gte: 10
+      duration_gte_sec: 60
+    effects:
+      add_tag:
+        - resource_leak
+        - close_wait_leak
+        - performance_issue
+      highlight_style: orange_glow
+      icon_hint: skull
+
+  - id: excessive_time_wait
+    name: "Excessive TIME_WAIT Connections"
+    description: |
+      Detects many connections in TIME_WAIT state, which may indicate connection pool 
+      exhaustion, aggressive connection cycling, or need for SO_REUSEADDR tuning.
+    severity: low
+    tags:
+      - performance
+      - tuning
+      - debug
+    match:
+      state: TIME_WAIT
+      connection_count_gte: 50
+    effects:
+      add_tag:
+        - time_wait_buildup
+        - performance_issue
+        - tuning_needed
+      highlight_style: gray_glow
+      icon_hint: ghost
+
+  - id: large_data_transfer
+    name: "Large Data Transfer"
+    description: |
+      Detects connections with unusually large amounts of data transferred, which could 
+      indicate data exfiltration, backup operations, or legitimate large file transfers.
+    severity: medium
+    tags:
+      - exfiltration
+      - data_transfer
+      - anomaly
+    match:
+      state: ESTABLISHED
+      direction: outbound
+      bytes_sent_gte: 104857600  # 100 MB
+      exclude_private_ips: true
+    effects:
+      add_tag:
+        - large_transfer
+        - data_exfiltration_risk
+      highlight_style: red_glow
+      icon_hint: skull
+
+  - id: connection_to_tor_exit
+    name: "Connection to Known Tor Exit Node"
+    description: |
+      Detects connections to known Tor exit nodes, which may indicate anonymized 
+      communication, data exfiltration, or legitimate privacy-focused traffic.
+    severity: high
+    tags:
+      - tor
+      - anonymization
+      - suspicious
+      - privacy
+    match:
+      direction: outbound
+      remote_tags_contains: tor_exit
+      state: ESTABLISHED
+    effects:
+      add_tag:
+        - tor_connection
+        - anonymized
+        - suspicious
+      highlight_style: red_glow
+      icon_hint: skull
+
+  - id: connection_to_cloud_storage
+    name: "Connection to Cloud Storage Service"
+    description: |
+      Detects connections to known cloud storage providers (S3, GCS, Azure Blob, etc.), 
+      which could be legitimate or indicate data exfiltration to attacker-controlled buckets.
+    severity: low
+    tags:
+      - cloud
+      - data_transfer
+      - informational
+    match:
+      direction: outbound
+      state: ESTABLISHED
+      remote_tags_contains_any:
+        - aws_s3
+        - google_cloud_storage
+        - azure_blob
+        - dropbox
+        - box
+    effects:
+      add_tag:
+        - cloud_storage
+        - data_transfer
+      highlight_style: blue_glow
+      icon_hint: pumpkin
+
+  - id: failed_connection_attempts
+    name: "Multiple Failed Connection Attempts"
+    description: |
+      Detects repeated failed connection attempts (SYN_SENT without ESTABLISHED), 
+      which may indicate network issues, firewall blocks, or scanning activity.
+    severity: low
+    tags:
+      - failed_connection
+      - network_issue
+      - scanning
+    match:
+      state: SYN_SENT
+      connection_count_gte: 10
+      duration_gte_sec: 30
+      rate_per_minute_gte: 5
+    effects:
+      add_tag:
+        - failed_attempts
+        - connection_failure
+        - network_issue
+      highlight_style: red_glow
+      icon_hint: skull
+
+  - id: localhost_external_confusion
+    name: "Localhost/External Address Confusion"
+    description: |
+      Detects connections where localhost or loopback addresses are mixed with external 
+      connections in unusual ways, which may indicate misconfigurations or tunneling.
+    severity: low
+    tags:
+      - misconfiguration
+      - tunneling
+      - debug
+    match:
+      remote_ip_in:
+        - 127.0.0.1
+        - ::1
+      state: ESTABLISHED
+      local_port_gte: 49152
+    effects:
+      add_tag:
+        - localhost_confusion
+        - possible_tunnel
+      highlight_style: yellow_glow
+      icon_hint: ghost
+
+  - id: privileged_port_binding
+    name: "Binding to Privileged Port"
+    description: |
+      Detects when a process binds to a privileged port (<1024), which requires root 
+      or CAP_NET_BIND_SERVICE. Useful for security auditing.
+    severity: low
+    tags:
+      - privileged
+      - security_audit
+      - informational
+    match:
+      state: LISTEN
+      local_port_lte: 1024
+      exclude_common_privileged_ports:
+        - 22    # SSH
+        - 80    # HTTP
+        - 443   # HTTPS
+        - 25    # SMTP
+        - 53    # DNS
+    effects:
+      add_tag:
+        - privileged_port
+        - security_audit
+      highlight_style: blue_glow
+      icon_hint: pumpkin
+
+  - id: ipv6_usage
+    name: "IPv6 Connection Usage"
+    description: |
+      Flags IPv6 connections for visibility, as they may be less monitored or filtered 
+      in some environments. This is informational, not necessarily suspicious.
+    severity: low
+    tags:
+      - ipv6
+      - informational
+      - visibility
+    match:
+      remote_ip_version: 6
+      state_in:
+        - ESTABLISHED
+        - LISTEN
+    effects:
+      add_tag:
+        - ipv6
+        - visibility
+      highlight_style: cyan_glow
+      icon_hint: ghost
+
+tag_definitions:
+  beacon:
+    description: "Regular, periodic connection pattern suggesting C2 beaconing"
+    severity_hint: high
+    
+  c2:
+    description: "Potential command and control communication"
+    severity_hint: critical
+    
+  exfiltration:
+    description: "Possible data exfiltration activity"
+    severity_hint: high
+    
+  anomaly:
+    description: "Unusual pattern that deviates from normal behavior"
+    severity_hint: medium
+    
+  scanning:
+    description: "Port scanning or network reconnaissance activity"
+    severity_hint: medium
+    
+  resource_leak:
+    description: "Resource leak or improper connection management"
+    severity_hint: medium
+    
+  performance:
+    description: "Performance issue or inefficiency"
+    severity_hint: low
+    
+  debug:
+    description: "Useful for debugging and troubleshooting"
+    severity_hint: low
+    
+  informational:
+    description: "Informational tag for visibility, not a problem"
+    severity_hint: low
+    
+  cloud:
+    description: "Connection to cloud service provider"
+    severity_hint: low
+    
+  tor:
+    description: "Connection related to Tor network"
+    severity_hint: high
+    
+  privacy:
+    description: "Privacy-related connection (VPN, Tor, etc.)"
+    severity_hint: low
+
+highlight_styles:
+  red_glow:
+    description: "Bright red highlight for critical/high severity"
+    color: red
+    intensity: bright
+    
+  orange_glow:
+    description: "Orange highlight for medium severity"
+    color: orange
+    intensity: medium
+    
+  yellow_glow:
+    description: "Yellow highlight for low-medium severity"
+    color: yellow
+    intensity: medium
+    
+  gray_glow:
+    description: "Gray highlight for informational/cleanup states"
+    color: gray
+    intensity: dim
+    
+  blue_glow:
+    description: "Blue highlight for informational items"
+    color: blue
+    intensity: medium
+    
+  cyan_glow:
+    description: "Cyan highlight for visibility/tracking"
+    color: cyan
+    intensity: medium

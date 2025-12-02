@@ -1,0 +1,507 @@
+version: 1
+entity: network_map
+description: |
+  Defines the graph model, node types, edge types, and layout guidelines for ntomb's 
+  process-centric network visualization. This spec describes how network connections 
+  are represented as a graph with the target process at the center and remote endpoints 
+  as surrounding nodes.
+
+node_types:
+  process:
+    label: "Process Node"
+    icon: "coffin"
+    description: "Represents a Linux process with network connections"
+    fields:
+      - name: pid
+        type: u32
+        description: "Process ID"
+        required: true
+      - name: name
+        type: string
+        description: "Process name from /proc/{pid}/comm"
+        required: true
+      - name: cmdline
+        type: string
+        description: "Full command line from /proc/{pid}/cmdline"
+        required: false
+      - name: exe_path
+        type: string
+        description: "Path to executable from /proc/{pid}/exe"
+        required: false
+      - name: user
+        type: string
+        description: "Username of process owner"
+        required: false
+      - name: is_target
+        type: bool
+        description: "Whether this is the target process being inspected"
+        required: true
+        default: false
+
+  remote_endpoint:
+    label: "Remote Endpoint"
+    icon: "skull"
+    description: "Represents a remote IP address or hostname that the process connects to"
+    fields:
+      - name: ip
+        type: string
+        description: "IP address (IPv4 or IPv6)"
+        required: true
+      - name: port
+        type: u16
+        description: "Remote port number"
+        required: false
+      - name: domain
+        type: string
+        description: "Resolved domain name (reverse DNS)"
+        required: false
+      - name: asn
+        type: u32
+        description: "Autonomous System Number"
+        required: false
+      - name: country
+        type: string
+        description: "Country code (ISO 3166-1 alpha-2)"
+        required: false
+      - name: tags
+        type: list<string>
+        description: "Classification tags (e.g., 'cloud', 'cdn', 'suspicious')"
+        required: false
+        default: []
+      - name: connection_count
+        type: usize
+        description: "Number of connections to this endpoint"
+        required: true
+        default: 1
+
+  service_listener:
+    label: "Service Listener"
+    icon: "pumpkin"
+    description: "Represents a listening socket (LISTEN state) on the local system"
+    fields:
+      - name: ip
+        type: string
+        description: "Local IP address (0.0.0.0, ::, or specific interface)"
+        required: true
+      - name: port
+        type: u16
+        description: "Local port number"
+        required: true
+      - name: protocol
+        type: string
+        description: "Protocol (TCP or UDP)"
+        required: true
+      - name: process_pid
+        type: u32
+        description: "PID of the process that owns this listener"
+        required: true
+
+  endpoint_group:
+    label: "Grouped Endpoints"
+    icon: "ghost"
+    description: "Represents multiple endpoints grouped together (by subnet, domain, or ASN)"
+    fields:
+      - name: group_type
+        type: string
+        description: "Type of grouping (subnet, domain, asn, country)"
+        required: true
+      - name: group_key
+        type: string
+        description: "The grouping key (e.g., '192.168.1.0/24', '*.example.com', 'AS15169')"
+        required: true
+      - name: endpoint_count
+        type: usize
+        description: "Number of endpoints in this group"
+        required: true
+      - name: connection_count
+        type: usize
+        description: "Total connections to all endpoints in this group"
+        required: true
+      - name: tags
+        type: list<string>
+        description: "Aggregated tags from grouped endpoints"
+        required: false
+        default: []
+
+edge_types:
+  outbound_connection:
+    label: "Outbound Connection"
+    description: "Connection initiated by the target process to a remote endpoint"
+    direction: outbound
+    from: process
+    to: remote_endpoint
+    fields:
+      - name: protocol
+        type: string
+        description: "Protocol (TCP or UDP)"
+        required: true
+      - name: state
+        type: string
+        description: "Connection state (ESTABLISHED, SYN_SENT, etc.)"
+        required: true
+      - name: local_port
+        type: u16
+        description: "Local port number"
+        required: true
+      - name: remote_port
+        type: u16
+        description: "Remote port number"
+        required: true
+      - name: bytes_sent
+        type: u64
+        description: "Bytes sent (if available)"
+        required: false
+      - name: bytes_received
+        type: u64
+        description: "Bytes received (if available)"
+        required: false
+      - name: duration_sec
+        type: u64
+        description: "Connection duration in seconds"
+        required: false
+      - name: inode
+        type: u64
+        description: "Socket inode from /proc/net/*"
+        required: false
+
+  inbound_connection:
+    label: "Inbound Connection"
+    description: "Connection from a remote endpoint to the target process"
+    direction: inbound
+    from: remote_endpoint
+    to: process
+    fields:
+      - name: protocol
+        type: string
+        description: "Protocol (TCP or UDP)"
+        required: true
+      - name: state
+        type: string
+        description: "Connection state (ESTABLISHED, SYN_RECV, etc.)"
+        required: true
+      - name: local_port
+        type: u16
+        description: "Local port number"
+        required: true
+      - name: remote_port
+        type: u16
+        description: "Remote port number"
+        required: true
+      - name: bytes_sent
+        type: u64
+        description: "Bytes sent (if available)"
+        required: false
+      - name: bytes_received
+        type: u64
+        description: "Bytes received (if available)"
+        required: false
+      - name: duration_sec
+        type: u64
+        description: "Connection duration in seconds"
+        required: false
+      - name: inode
+        type: u64
+        description: "Socket inode from /proc/net/*"
+        required: false
+
+  listener_binding:
+    label: "Listener Binding"
+    description: "Represents a process listening on a local port"
+    direction: bidirectional
+    from: process
+    to: service_listener
+    fields:
+      - name: protocol
+        type: string
+        description: "Protocol (TCP or UDP)"
+        required: true
+      - name: backlog
+        type: u32
+        description: "Listen backlog size (if available)"
+        required: false
+
+connection_states:
+  ESTABLISHED:
+    description: "Active connection with data transfer"
+    severity_hint: normal
+    style:
+      color: green
+      line_style: solid
+      icon_hint: pumpkin
+
+  LISTEN:
+    description: "Socket is listening for incoming connections"
+    severity_hint: normal
+    style:
+      color: blue
+      line_style: solid
+      icon_hint: pumpkin
+
+  SYN_SENT:
+    description: "Connection attempt in progress (SYN sent)"
+    severity_hint: normal
+    style:
+      color: cyan
+      line_style: dashed
+      icon_hint: ghost
+
+  SYN_RECV:
+    description: "Connection request received (SYN-ACK sent)"
+    severity_hint: normal
+    style:
+      color: cyan
+      line_style: dashed
+      icon_hint: ghost
+
+  FIN_WAIT1:
+    description: "Connection closing (FIN sent, waiting for ACK)"
+    severity_hint: cleanup
+    style:
+      color: yellow
+      line_style: dotted
+      icon_hint: ghost
+
+  FIN_WAIT2:
+    description: "Connection closing (FIN ACKed, waiting for remote FIN)"
+    severity_hint: cleanup
+    style:
+      color: yellow
+      line_style: dotted
+      icon_hint: ghost
+
+  TIME_WAIT:
+    description: "Connection closed, waiting for delayed packets"
+    severity_hint: cleanup
+    style:
+      color: gray
+      line_style: dotted
+      icon_hint: ghost
+
+  CLOSE_WAIT:
+    description: "Remote closed, local side still open"
+    severity_hint: potential_issue
+    style:
+      color: orange
+      line_style: dashed
+      icon_hint: skull
+
+  LAST_ACK:
+    description: "Connection closing (waiting for final ACK)"
+    severity_hint: cleanup
+    style:
+      color: yellow
+      line_style: dotted
+      icon_hint: ghost
+
+  CLOSING:
+    description: "Both sides closing simultaneously"
+    severity_hint: cleanup
+    style:
+      color: yellow
+      line_style: dotted
+      icon_hint: ghost
+
+  CLOSED:
+    description: "Connection fully closed"
+    severity_hint: normal
+    style:
+      color: gray
+      line_style: none
+      icon_hint: skull
+
+layout:
+  center_node_type: process
+  max_neighbors: 20
+  description: |
+    Layout guidelines for rendering the process-centric network map in a terminal UI.
+    The target process is always at the center, with remote endpoints arranged around it.
+
+  grouping_strategies:
+    - name: by_ip
+      description: "Group connections by unique remote IP address (default)"
+      priority: 1
+      threshold:
+        max_unique_ips: 20
+
+    - name: by_domain
+      description: "Group connections by resolved domain name"
+      priority: 2
+      threshold:
+        max_unique_domains: 15
+
+    - name: by_subnet
+      description: "Group connections by /24 subnet when too many unique IPs"
+      priority: 3
+      threshold:
+        min_ips_for_grouping: 20
+
+    - name: by_asn
+      description: "Group connections by Autonomous System Number"
+      priority: 4
+      threshold:
+        min_ips_for_grouping: 30
+
+    - name: by_country
+      description: "Group connections by country when extremely noisy"
+      priority: 5
+      threshold:
+        min_ips_for_grouping: 50
+
+  terminal_size_rules:
+    small:
+      description: "Terminal smaller than 80x24"
+      behavior: "Show summary text instead of graph"
+      
+    medium:
+      description: "Terminal 80x24 to 120x40"
+      behavior: "Show simplified graph with limited nodes"
+      max_nodes: 12
+      
+    large:
+      description: "Terminal larger than 120x40"
+      behavior: "Show full graph with all details"
+      max_nodes: 20
+
+  node_positioning:
+    algorithm: radial
+    description: "Position remote nodes in a circle around the center process"
+    parameters:
+      radius: auto
+      angle_distribution: even
+      collision_avoidance: true
+
+  edge_rendering:
+    style: lines
+    description: "Draw edges as lines connecting nodes"
+    parameters:
+      show_arrows: true
+      arrow_direction: based_on_edge_type
+      line_thickness: based_on_connection_count
+
+views:
+  default_view:
+    name: "Default View"
+    description: "Show all connections for the target process, grouped by endpoint"
+    filters:
+      include_states:
+        - ESTABLISHED
+        - LISTEN
+        - SYN_SENT
+        - SYN_RECV
+        - TIME_WAIT
+        - CLOSE_WAIT
+        - FIN_WAIT1
+        - FIN_WAIT2
+      exclude_states: []
+      include_tags: []
+      exclude_tags: []
+      include_private: true
+      include_public: true
+      min_connection_count: 1
+
+  suspicious_only:
+    name: "Suspicious Only"
+    description: "Only show connections marked as suspicious by detection rules"
+    filters:
+      include_states:
+        - ESTABLISHED
+        - SYN_SENT
+        - CLOSE_WAIT
+      exclude_states:
+        - TIME_WAIT
+      include_tags:
+        - suspicious
+        - beacon
+        - exfiltration
+        - anomaly
+      exclude_tags: []
+      include_private: true
+      include_public: true
+      min_connection_count: 1
+
+  active_only:
+    name: "Active Connections"
+    description: "Only show active data-transferring connections"
+    filters:
+      include_states:
+        - ESTABLISHED
+      exclude_states:
+        - LISTEN
+        - TIME_WAIT
+        - CLOSE_WAIT
+        - FIN_WAIT1
+        - FIN_WAIT2
+        - CLOSING
+        - LAST_ACK
+      include_tags: []
+      exclude_tags: []
+      include_private: true
+      include_public: true
+      min_connection_count: 1
+
+  local_only:
+    name: "Local Connections"
+    description: "Only show connections to RFC1918 private addresses"
+    filters:
+      include_states:
+        - ESTABLISHED
+        - LISTEN
+        - TIME_WAIT
+      exclude_states: []
+      include_tags: []
+      exclude_tags: []
+      include_private: true
+      include_public: false
+      min_connection_count: 1
+
+  internet_only:
+    name: "Internet Connections"
+    description: "Only show connections to public IP addresses"
+    filters:
+      include_states:
+        - ESTABLISHED
+        - SYN_SENT
+        - TIME_WAIT
+      exclude_states:
+        - LISTEN
+      include_tags: []
+      exclude_tags: []
+      include_private: false
+      include_public: true
+      min_connection_count: 1
+
+  listeners_only:
+    name: "Listening Sockets"
+    description: "Only show sockets in LISTEN state"
+    filters:
+      include_states:
+        - LISTEN
+      exclude_states:
+        - ESTABLISHED
+        - TIME_WAIT
+        - CLOSE_WAIT
+      include_tags: []
+      exclude_tags: []
+      include_private: true
+      include_public: true
+      min_connection_count: 1
+
+  cleanup_states:
+    name: "Cleanup States"
+    description: "Show connections in closing/cleanup states (TIME_WAIT, CLOSE_WAIT, etc.)"
+    filters:
+      include_states:
+        - TIME_WAIT
+        - CLOSE_WAIT
+        - FIN_WAIT1
+        - FIN_WAIT2
+        - CLOSING
+        - LAST_ACK
+      exclude_states:
+        - ESTABLISHED
+        - LISTEN
+      include_tags: []
+      exclude_tags: []
+      include_private: true
+      include_public: true
+      min_connection_count: 1
