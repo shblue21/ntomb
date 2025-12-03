@@ -21,6 +21,7 @@ thiserror = "2.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+netstat2 = "0.11.2"
 
 [[bin]]
 name = "ntomb"

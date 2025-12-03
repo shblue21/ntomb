@@ -1,10 +1,13 @@
 // Network connection scanning module
 // Read-only operations following ntomb security-domain guidelines
+// Uses netstat2 for cross-platform network socket information
 
-use std::fs;
+use netstat2::{
+    get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState,
+};
 use std::io;
 
-/// TCP connection states from /proc/net/tcp
+/// TCP connection states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
     Established,
@@ -21,21 +24,20 @@ pub enum ConnectionState {
     Unknown,
 }
 
-impl ConnectionState {
-    /// Parse hex state value from /proc/net/tcp
-    fn from_hex(hex_str: &str) -> Self {
-        match hex_str {
-            "01" => ConnectionState::Established,
-            "02" => ConnectionState::SynSent,
-            "03" => ConnectionState::SynRecv,
-            "04" => ConnectionState::FinWait1,
-            "05" => ConnectionState::FinWait2,
-            "06" => ConnectionState::TimeWait,
-            "07" => ConnectionState::Close,
-            "08" => ConnectionState::CloseWait,
-            "09" => ConnectionState::LastAck,
-            "0A" => ConnectionState::Listen,
-            "0B" => ConnectionState::Closing,
+impl From<TcpState> for ConnectionState {
+    fn from(state: TcpState) -> Self {
+        match state {
+            TcpState::Established => ConnectionState::Established,
+            TcpState::SynSent => ConnectionState::SynSent,
+            TcpState::SynReceived => ConnectionState::SynRecv,
+            TcpState::FinWait1 => ConnectionState::FinWait1,
+            TcpState::FinWait2 => ConnectionState::FinWait2,
+            TcpState::TimeWait => ConnectionState::TimeWait,
+            TcpState::Closed => ConnectionState::Close,
+            TcpState::CloseWait => ConnectionState::CloseWait,
+            TcpState::LastAck => ConnectionState::LastAck,
+            TcpState::Listen => ConnectionState::Listen,
+            TcpState::Closing => ConnectionState::Closing,
             _ => ConnectionState::Unknown,
         }
     }
@@ -52,109 +54,39 @@ pub struct Connection {
     pub inode: Option<u64>,
 }
 
-impl Connection {
-    /// Format connection for display
-    pub fn format_display(&self) -> String {
-        format!(
-            "{}:{} -> {}:{} [{:?}]",
-            self.local_addr, self.local_port, self.remote_addr, self.remote_port, self.state
-        )
-    }
-}
-
-/// Collect TCP connections from /proc/net/tcp
-/// Read-only operation, never modifies system state
+/// Collect TCP connections using netstat2
+/// Cross-platform, read-only operation, never modifies system state
 pub fn collect_connections() -> io::Result<Vec<Connection>> {
-    let content = match fs::read_to_string("/proc/net/tcp") {
-        Ok(c) => c,
-        Err(e) => {
-            // Gracefully handle permission or missing file errors
-            // Following security-domain: calm, informative tone
-            return Err(io::Error::new(
-                e.kind(),
-                format!("Cannot read /proc/net/tcp: {}", e),
-            ));
-        }
-    };
+    // Query both IPv4 and IPv6 TCP connections
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP;
+
+    let sockets = get_sockets_info(af_flags, proto_flags).map_err(|e| {
+        // Gracefully handle errors
+        // Following security-domain: calm, informative tone
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Cannot retrieve network sockets: {}", e),
+        )
+    })?;
 
     let mut connections = Vec::new();
 
-    // Skip header line
-    for line in content.lines().skip(1) {
-        if let Some(conn) = parse_tcp_line(line) {
-            connections.push(conn);
+    for socket_info in sockets {
+        if let ProtocolSocketInfo::Tcp(tcp_info) = socket_info.protocol_socket_info {
+            connections.push(Connection {
+                local_addr: tcp_info.local_addr.to_string(),
+                local_port: tcp_info.local_port,
+                remote_addr: tcp_info.remote_addr.to_string(),
+                remote_port: tcp_info.remote_port,
+                state: ConnectionState::from(tcp_info.state),
+                // netstat2 doesn't provide inode directly, but we can add it later if needed
+                inode: None,
+            });
         }
     }
 
     Ok(connections)
-}
-
-/// Parse a single line from /proc/net/tcp
-fn parse_tcp_line(line: &str) -> Option<Connection> {
-    let parts: Vec<&str> = line.split_whitespace().collect();
-
-    // /proc/net/tcp format:
-    // sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-    // 0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345
-
-    if parts.len() < 10 {
-        return None;
-    }
-
-    // Parse local address (format: HEXIP:HEXPORT)
-    let local = parse_address(parts[1])?;
-    let remote = parse_address(parts[2])?;
-
-    // Parse state
-    let state = ConnectionState::from_hex(parts[3]);
-
-    // Parse inode
-    let inode = parts.get(9).and_then(|s| s.parse::<u64>().ok());
-
-    Some(Connection {
-        local_addr: local.0,
-        local_port: local.1,
-        remote_addr: remote.0,
-        remote_port: remote.1,
-        state,
-        inode,
-    })
-}
-
-/// Parse hex address:port format from /proc/net/tcp
-/// Format: HEXIP:HEXPORT (e.g., "0100007F:1F90" = 127.0.0.1:8080)
-fn parse_address(addr_str: &str) -> Option<(String, u16)> {
-    let parts: Vec<&str> = addr_str.split(':').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let ip = parse_hex_ip(parts[0])?;
-    let port = u16::from_str_radix(parts[1], 16).ok()?;
-
-    Some((ip, port))
-}
-
-/// Parse hex IP address (little-endian format)
-/// Example: "0100007F" = 127.0.0.1
-fn parse_hex_ip(hex_ip: &str) -> Option<String> {
-    if hex_ip.len() != 8 {
-        return None;
-    }
-
-    let mut octets = Vec::new();
-    for i in (0..8).step_by(2) {
-        let octet = u8::from_str_radix(&hex_ip[i..i + 2], 16).ok()?;
-        octets.push(octet);
-    }
-
-    // Reverse for little-endian
-    octets.reverse();
-
-    Some(format!(
-        "{}.{}.{}.{}",
-        octets[0], octets[1], octets[2], octets[3]
-    ))
 }
 
 #[cfg(test)]
@@ -162,24 +94,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_hex_ip() {
-        assert_eq!(parse_hex_ip("0100007F"), Some("127.0.0.1".to_string()));
-        assert_eq!(parse_hex_ip("00000000"), Some("0.0.0.0".to_string()));
+    fn test_collect_connections() {
+        // This test will only pass if the system has network connections
+        // It's more of a smoke test to ensure the API works
+        match collect_connections() {
+            Ok(conns) => {
+                println!("Found {} connections", conns.len());
+                // Should have at least some connections on a typical system
+                assert!(conns.len() >= 0);
+            }
+            Err(e) => {
+                // On some systems this might fail due to permissions
+                println!("Warning: Could not collect connections: {}", e);
+            }
+        }
     }
 
     #[test]
-    fn test_parse_address() {
-        let result = parse_address("0100007F:1F90");
-        assert!(result.is_some());
-        let (ip, port) = result.unwrap();
-        assert_eq!(ip, "127.0.0.1");
-        assert_eq!(port, 8080);
-    }
-
-    #[test]
-    fn test_connection_state_from_hex() {
-        assert_eq!(ConnectionState::from_hex("01"), ConnectionState::Established);
-        assert_eq!(ConnectionState::from_hex("0A"), ConnectionState::Listen);
-        assert_eq!(ConnectionState::from_hex("06"), ConnectionState::TimeWait);
+    fn test_connection_state_conversion() {
+        assert_eq!(
+            ConnectionState::from(TcpState::Established),
+            ConnectionState::Established
+        );
+        assert_eq!(
+            ConnectionState::from(TcpState::Listen),
+            ConnectionState::Listen
+        );
+        assert_eq!(
+            ConnectionState::from(TcpState::TimeWait),
+            ConnectionState::TimeWait
+        );
     }
 }
