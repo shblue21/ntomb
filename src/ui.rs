@@ -5,9 +5,25 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph},
+    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph, Sparkline},
     Frame,
 };
+
+// Color constants from ntomb-visual-design.md
+const NEON_PURPLE: Color = Color::Rgb(187, 154, 247);
+const PUMPKIN_ORANGE: Color = Color::Rgb(255, 158, 100);
+const BLOOD_RED: Color = Color::Rgb(247, 118, 142);
+const TOXIC_GREEN: Color = Color::Rgb(158, 206, 106);
+const BONE_WHITE: Color = Color::Rgb(169, 177, 214);
+
+/// Interpolate between two RGB colors based on a ratio (0.0 ~ 1.0)
+fn interpolate_color(color1: (u8, u8, u8), color2: (u8, u8, u8), ratio: f32) -> Color {
+    let ratio = ratio.clamp(0.0, 1.0);
+    let r = (color1.0 as f32 + (color2.0 as f32 - color1.0 as f32) * ratio) as u8;
+    let g = (color1.1 as f32 + (color2.1 as f32 - color1.1 as f32) * ratio) as u8;
+    let b = (color1.2 as f32 + (color2.2 as f32 - color1.2 as f32) * ratio) as u8;
+    Color::Rgb(r, g, b)
+}
 
 /// Main UI drawing function
 pub fn draw(f: &mut Frame, app: &AppState) {
@@ -88,7 +104,16 @@ fn render_banner(f: &mut Frame, area: Rect) {
     f.render_widget(banner, area);
 }
 
-fn render_network_map(f: &mut Frame, area: Rect, _app: &AppState) {
+fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
+    // Calculate pulsing neon color based on pulse_phase
+    let pulse_color = interpolate_color((138, 43, 226), (187, 154, 247), app.pulse_phase);
+
+    // Zombie color based on blink state
+    let zombie_color = if app.zombie_blink {
+        BLOOD_RED
+    } else {
+        Color::Rgb(100, 60, 70) // Faded red
+    };
     let map_content = vec![
         Line::from(""),
         Line::from(vec![
@@ -98,20 +123,20 @@ fn render_network_map(f: &mut Frame, area: Rect, _app: &AppState) {
         Line::from("                │"),
         Line::from(vec![
             Span::raw("                │ "),
-            Span::styled("⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::styled(" <SSL/443>", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::styled(" (🟣 Solid Neon)", Style::default().fg(Color::Gray)),
+            Span::styled("⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄", Style::default().fg(pulse_color)),
+            Span::styled(" <SSL/443>", Style::default().fg(pulse_color)),
+            Span::styled(" (🟣 Pulsing)", Style::default().fg(Color::Gray)),
         ]),
         Line::from(vec![
             Span::raw("                ▼   "),
-            Span::styled("⠱⡀", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::styled("   12ms      ⠑⢄", Style::default().fg(Color::Green)),
+            Span::styled("⠱⡀", Style::default().fg(pulse_color)),
+            Span::styled("   12ms      ⠑⢄", Style::default().fg(TOXIC_GREEN)),
         ]),
         Line::from(vec![
             Span::raw("                     "),
-            Span::styled("⠱⡀", Style::default().fg(Color::Rgb(138, 43, 226))),
+            Span::styled("⠱⡀", Style::default().fg(pulse_color)),
             Span::raw("              ⠑⢄       "),
-            Span::styled("[🧟 zombie-proc]", Style::default().fg(Color::Red)),
+            Span::styled("[🧟 zombie-proc]", Style::default().fg(zombie_color)),
         ]),
         Line::from(vec![
             Span::raw("                      "),
@@ -219,12 +244,28 @@ fn render_network_map(f: &mut Frame, area: Rect, _app: &AppState) {
     f.render_widget(network_map, area);
 }
 
-fn render_soul_inspector(f: &mut Frame, area: Rect, _app: &AppState) {
-    let inspection_content = vec![
+fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
+    // Split area for content and sparkline
+    let inspector_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(10), // Top info
+            Constraint::Length(5),  // Sparkline
+            Constraint::Min(0),     // Socket list
+        ])
+        .split(area);
+
+    // Top section with process info
+    let top_content = vec![
         Line::from(""),
         Line::from(vec![
             Span::raw("  TARGET: "),
-            Span::styled("⚰️ kafka-broker-1", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "⚰️ kafka-broker-1",
+                Style::default()
+                    .fg(PUMPKIN_ORANGE)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
             Span::raw("  PID: "),
@@ -238,33 +279,64 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, _app: &AppState) {
         ]),
         Line::from(vec![
             Span::raw("  STATE: "),
-            Span::styled("🟢 ESTABLISHED (Alive)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "🟢 ESTABLISHED (Alive)",
+                Style::default()
+                    .fg(TOXIC_GREEN)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
+    ];
+
+    let top_paragraph = Paragraph::new(top_content).block(
+        Block::default()
+            .title(vec![
+                Span::styled(
+                    "━ 🔮 Soul Inspector (Detail) ",
+                    Style::default()
+                        .fg(NEON_PURPLE)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("━━━━━━", Style::default().fg(NEON_PURPLE)),
+            ])
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(NEON_PURPLE)),
+    );
+
+    f.render_widget(top_paragraph, inspector_chunks[0]);
+
+    // Sparkline for traffic history
+    let sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .title(vec![Span::styled(
+                    " 📊 Traffic History (Last 60s) ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )])
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(NEON_PURPLE)),
+        )
+        .data(&app.traffic_history)
+        .style(Style::default().fg(TOXIC_GREEN))
+        .max(100);
+
+    f.render_widget(sparkline, inspector_chunks[1]);
+
+    // Bottom section with socket list
+    let socket_content = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled("  [📊 Traffic History (Last 1m)]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  In :  "),
-            Span::styled("█▇▆▅▄▃▂", Style::default().fg(Color::Green)),
-            Span::raw("     "),
-            Span::styled("(2.5 MB/s)", Style::default().fg(Color::Green)),
-        ]),
-        Line::from(vec![
-            Span::raw("  Out:  "),
-            Span::styled("████▇▆▅", Style::default().fg(Color::Blue)),
-            Span::raw("     "),
-            Span::styled("(4.1 MB/s)", Style::default().fg(Color::Blue)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  [📜 Open Sockets List]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "  [📜 Open Sockets List]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(vec![
             Span::raw("  > "),
             Span::styled("tcp://0.0.0.0:9092", Style::default().fg(Color::Cyan)),
-            Span::styled(" (LISTEN)", Style::default().fg(Color::Green)),
+            Span::styled(" (LISTEN)", Style::default().fg(TOXIC_GREEN)),
         ]),
         Line::from(vec![
             Span::raw("  > "),
@@ -275,23 +347,18 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, _app: &AppState) {
         Line::from(vec![
             Span::raw("  > "),
             Span::styled("tcp://[::1]:9093", Style::default().fg(Color::Cyan)),
-            Span::styled(" (ESTABLISHED)", Style::default().fg(Color::Green)),
+            Span::styled(" (ESTABLISHED)", Style::default().fg(TOXIC_GREEN)),
         ]),
     ];
 
-    let inspection = Paragraph::new(inspection_content)
-        .block(
-            Block::default()
-                .title(vec![
-                    Span::styled("━ 🔮 Soul Inspector (Detail) ", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-                    Span::styled("━━━━━━", Style::default().fg(Color::Rgb(138, 43, 226))),
-                ])
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Rgb(138, 43, 226)))
-        );
+    let socket_paragraph = Paragraph::new(socket_content).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(NEON_PURPLE)),
+    );
 
-    f.render_widget(inspection, area);
+    f.render_widget(socket_paragraph, inspector_chunks[2]);
 }
 
 fn render_grimoire(f: &mut Frame, area: Rect, _app: &AppState) {
