@@ -1,6 +1,7 @@
 // Application state management
 
-use std::time::Instant;
+use crate::net::{self, Connection};
+use std::time::{Duration, Instant};
 
 /// Number of log entries in the grimoire (for bounds checking)
 const LOG_ENTRY_COUNT: usize = 6;
@@ -10,6 +11,9 @@ const TICK_INTERVAL_MS: u128 = 100;
 
 /// Blink interval for zombie animation (500ms)
 const BLINK_INTERVAL_MS: u128 = 500;
+
+/// Connection refresh interval (1 second)
+const CONN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Main application state
 pub struct AppState {
@@ -39,6 +43,15 @@ pub struct AppState {
 
     /// Tick counter for generating varied traffic data
     tick_counter: u64,
+
+    /// Active network connections from /proc/net/tcp
+    pub connections: Vec<Connection>,
+
+    /// Last time connections were refreshed
+    last_conn_refresh: Instant,
+
+    /// Connection refresh error message (if any)
+    pub conn_error: Option<String>,
 }
 
 impl AppState {
@@ -56,6 +69,9 @@ impl AppState {
             last_tick: now,
             last_blink: now,
             tick_counter: 0,
+            connections: Vec::new(),
+            last_conn_refresh: now,
+            conn_error: None,
         }
     }
 
@@ -84,6 +100,34 @@ impl AppState {
         if elapsed_blink >= BLINK_INTERVAL_MS {
             self.last_blink = now;
             self.zombie_blink = !self.zombie_blink;
+        }
+
+        // Refresh connections every 1 second
+        let elapsed_conn = now.duration_since(self.last_conn_refresh);
+        if elapsed_conn >= CONN_REFRESH_INTERVAL {
+            self.refresh_connections();
+        }
+    }
+
+    /// Refresh network connections from /proc/net/tcp
+    /// Read-only operation following security-domain guidelines
+    pub fn refresh_connections(&mut self) {
+        self.last_conn_refresh = Instant::now();
+
+        match net::collect_connections() {
+            Ok(conns) => {
+                self.connections = conns;
+                self.conn_error = None;
+            }
+            Err(e) => {
+                // Gracefully handle errors - don't panic
+                // Following security-domain: calm, informative tone
+                self.conn_error = Some(format!(
+                    "Cannot read /proc/net/tcp: {} (permission or OS issue)",
+                    e
+                ));
+                // Keep existing connections if refresh fails
+            }
         }
     }
 
