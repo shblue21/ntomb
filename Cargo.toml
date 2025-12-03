@@ -1,0 +1,32 @@
+[package]
+name = "ntomb"
+version = "0.6.66"
+edition = "2021"
+description = "Network Tomb: Process-centric network visualization with Halloween theme"
+authors = ["Kiroween Hackathon"]
+license = "MIT"
+
+[dependencies]
+# TUI framework
+ratatui = "0.28"
+crossterm = "0.28"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[bin]]
+name = "ntomb"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
