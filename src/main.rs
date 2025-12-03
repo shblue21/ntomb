@@ -43,16 +43,35 @@ fn main() -> Result<()> {
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut app = AppState::new();
+    let tick_rate = std::time::Duration::from_millis(100);
 
     loop {
+        // Draw the UI
         terminal.draw(|f| ui::draw(f, &app))?;
 
-        if event::poll(std::time::Duration::from_millis(100))? {
+        // Check if app should exit
+        if !app.running {
+            return Ok(());
+        }
+
+        // Handle events with timeout
+        if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
+                    // Quit on 'q', 'Q', or Esc
+                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                         app.running = false;
-                        return Ok(());
+                    }
+                    // Navigate logs with arrow keys
+                    KeyCode::Up => {
+                        app.select_previous_log();
+                    }
+                    KeyCode::Down => {
+                        app.select_next_log();
+                    }
+                    // Switch panel with Tab (placeholder for now)
+                    KeyCode::Tab => {
+                        app.switch_panel();
                     }
                     _ => {}
                 }
