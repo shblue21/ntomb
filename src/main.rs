@@ -46,6 +46,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
     let tick_rate = std::time::Duration::from_millis(100);
 
     loop {
+        // Update app state (animations, traffic history, etc.)
+        app.on_tick();
+
         // Draw the UI
         terminal.draw(|f| ui::draw(f, &app))?;
 
