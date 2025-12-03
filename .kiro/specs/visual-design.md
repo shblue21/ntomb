@@ -2,79 +2,79 @@
 
 ## 🎨 1. Color Palette (The Witching Hour Theme)
 
-일반적인 터미널 색상(Red, Green, Blue)을 쓰지 말고, RGB Hex Code를 직접 사용하여 네온 느낌을 내야 합니다.
+Use RGB Hex Codes directly instead of generic terminal colors (Red, Green, Blue) to achieve a neon aesthetic.
 
-| 역할 | 색상 이름 | Hex Code | 사용처 |
-|------|-----------|----------|--------|
-| 배경 | Void Black | #1a1b26 | 전체 터미널 배경 (Tokyo Night 테마 기반) |
-| 강조 (Main) | Neon Purple | #bb9af7 | 메인 테두리, 타이틀, 정상적인 데이터 흐름 |
-| 경고/지연 | Pumpkin Orange | #ff9e64 | 지연(Latency)이 높은 연결선, 경고 로그 |
-| 위험/좀비 | Blood Red | #f7768e | 좀비 프로세스, 끊긴 연결, 에러 메시지 |
-| 정상/활성 | Toxic Green | #9ece6a | 새로운 연결, 상태 'Alive', Sparkline 그래프 |
-| 비활성 | Bone White | #a9b1d6 | 일반 텍스트, 죽은 노드(Tombstone) |
-| 강조 배경 | Deep Indigo | #2f334d | 선택된 항목의 배경색 (Highlight) |
+| Role | Color Name | Hex Code | Usage |
+|------|-----------|----------|-------|
+| Background | Void Black | #1a1b26 | Terminal background (Tokyo Night theme based) |
+| Primary Accent | Neon Purple | #bb9af7 | Main borders, titles, normal data flow |
+| Warning/Latency | Pumpkin Orange | #ff9e64 | High latency connections, warning logs |
+| Danger/Zombie | Blood Red | #f7768e | Zombie processes, broken connections, error messages |
+| Active/Healthy | Toxic Green | #9ece6a | New connections, 'Alive' state, Sparkline graphs |
+| Inactive | Bone White | #a9b1d6 | General text, dead nodes (Tombstone) |
+| Highlight Background | Deep Indigo | #2f334d | Selected item background color |
 
 ## 📐 2. Layout Structure (Ratatui Constraints)
 
-화면을 크게 3단으로 나누고, 중간 영역을 다시 좌우로 나눕니다.
+The screen is divided into 3 main sections, with the middle section further split horizontally.
 
 ### Layout Hierarchy
 
-1. **Header (Top)**: 높이 8줄 (고정). ASCII Art 로고가 들어갈 공간.
-2. **Body (Middle)**: 나머지 공간 (Min(0)).
-   - **Left Pane (Map)**: 너비 70% (Percentage(70)). 네트워크 토폴로지 캔버스.
-   - **Right Pane (Info)**: 너비 30% (Percentage(30)). 상세 정보.
-     - Sub-layout: 세로로 3등분 (상세정보 40%, 트래픽 그래프 20%, 로그 40%).
-3. **Footer (Bottom)**: 높이 3줄 (고정). 상태바 및 키 가이드.
+1. **Header (Top)**: Fixed height of 8 lines. Space for ASCII Art logo.
+2. **Body (Middle)**: Remaining space (Min(0)).
+   - **Left Pane (Map)**: 70% width (Percentage(70)). Network topology canvas.
+   - **Right Pane (Info)**: 30% width (Percentage(30)). Detailed information.
+     - Sub-layout: Vertical split into 3 sections (Details 40%, Traffic Graph 20%, Logs 40%).
+3. **Footer (Bottom)**: Fixed height of 3 lines. Status bar and key guide.
 
-## 🧩 3. Component Details (핵심 위젯 명세)
+## 🧩 3. Component Details (Core Widget Specifications)
 
-### A. The Graveyard (Network Map) - 핵심
+### A. The Graveyard (Network Map) - Core Component
 
 **Widget**: Canvas
 
-**Marker**: `Marker::Braille` (점자 모드 필수). 해상도를 2x4배 높여 부드러운 곡선을 표현합니다.
+**Marker**: `Marker::Braille` (Braille mode required). Increases resolution by 2x4 to render smooth curves.
 
 **Drawing Logic**:
-- **노드(Node)**: 텍스트 라벨 (`ctx.print`)로 아이콘과 이름을 출력.
-- **링크(Link)**: `ctx.draw_line`을 사용하되, x1, y1에서 x2, y2로 바로 긋지 말고, 중간 지점을 거치는 베지에 곡선(Bezier Curve) 알고리즘을 살짝 넣으면 목업처럼 유려한 곡선이 나옵니다. (어려우면 직선으로 시작해도 무방)
+- **Nodes**: Display icons and names using text labels (`ctx.print`).
+- **Links**: Use `ctx.draw_line`, but instead of drawing straight from (x1, y1) to (x2, y2), add intermediate points using a Bezier Curve algorithm for smooth, organic curves like in the mockup. (Straight lines are acceptable as a starting point if curves are too complex)
 
 **Icons**:
-- 중앙 노드: ⚰️ (Coffin)
-- 외부 노드: ☁️ (Cloud), 🕸️ (Web), 👻 (Ghost)
+- Center node: ⚰️ (Coffin)
+- External nodes: ☁️ (Cloud), �️ (Webo), 👻 (Ghost)
 
 ### B. Soul Inspector (Sparkline)
 
 **Widget**: Sparkline
 
-**Data**: 최근 60초간의 트래픽(Packets/sec)을 `Vec<u64>`로 저장.
+**Data**: Store traffic (Packets/sec) for the last 60 seconds as `Vec<u64>`.
 
-**Style**: Toxic Green 색상으로 채우고, 데이터가 높을수록 색이 밝아지게 처리.
+**Style**: Fill with Toxic Green color, with brighter shades for higher data values.
 
 ### C. Grimoire (Logs)
 
 **Widget**: List
 
-**Behavior**: 새로운 로그가 들어오면 자동으로 스크롤이 아래로 내려가는 'Auto-scroll' 기능 구현.
+**Behavior**: Implement 'Auto-scroll' functionality that automatically scrolls down when new logs arrive.
 
-**Prefix**: 로그 레벨에 따라 아이콘 변경 (ℹ️, ⚠️, 🔴).
+**Prefix**: Change icons based on log level (ℹ️, ⚠️, 🔴).
 
 ## ✨ 4. Visual Effects (Wow Points)
 
-이 부분이 심사위원의 점수를 따는 포인트입니다.
+This section is critical for impressing judges.
 
 ### Neon Gradient Text
 
-상단 배너와 하단 바의 배경색을 단색이 아닌, 왼쪽(보라)에서 오른쪽(주황)으로 변하는 그라데이션 처리를 합니다. (Ratatui의 `Line`과 `Span`을 조합하여 글자마다 색을 다르게 지정).
+Apply gradient coloring to the top banner and bottom status bar, transitioning from purple (left) to orange (right). Use Ratatui's `Line` and `Span` to assign different colors to each character.
 
-### Pulse Animation (심장 박동)
+### Pulse Animation (Heartbeat)
 
-- 메인 루프(tick)에서 1초마다 `pulse_color` 변수를 변경합니다.
-- 연결선 색상을 Purple ↔ Bright Purple로 번갈아 보여주어, 데이터가 살아 움직이는 느낌을 줍니다.
+- Change the `pulse_color` variable every second in the main loop (tick).
+- Alternate connection line colors between Purple ↔ Bright Purple to create a living, pulsing data flow effect.
 
 ### Zombie Glitch
 
-좀비 프로세스(Zombie Process)가 감지되면, 해당 노드의 텍스트를 0.5초 간격으로 Visible / Hidden 시켜서 깜빡이는(Flicker) 효과를 줍니다.
+When a Zombie Process is detected, make the node text flicker by toggling between Visible / Hidden at 0.5-second intervals to create a glitch effect.
 
 ## 🎯 Implementation Guidelines
 
