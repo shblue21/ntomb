@@ -361,52 +361,80 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
     f.render_widget(socket_paragraph, inspector_chunks[2]);
 }
 
-fn render_grimoire(f: &mut Frame, area: Rect, _app: &AppState) {
-    let log_items = vec![
-        ListItem::new(Line::from(vec![
-            Span::styled(" [14:20:55] ", Style::default().fg(Color::DarkGray)),
-            Span::styled("ℹ️", Style::default().fg(Color::Cyan)),
-            Span::raw(" New spirit summoned:"),
-        ])),
-        ListItem::new(Line::from(vec![
-            Span::raw("            "),
-            Span::styled("[nginx-gw]", Style::default().fg(Color::Green)),
-            Span::styled(" (PID 8821)", Style::default().fg(Color::Gray)),
-        ])),
-        ListItem::new(Line::from(vec![
-            Span::styled(" [14:21:10] ", Style::default().fg(Color::DarkGray)),
-            Span::styled("⚠️", Style::default().fg(Color::Yellow)),
-            Span::raw(" High latency ritual:"),
-        ])),
-        ListItem::new(Line::from(vec![
-            Span::raw("            "),
-            Span::styled("MAIN_APP", Style::default().fg(Color::Rgb(255, 140, 0))),
-            Span::raw(" -> "),
-            Span::styled("auth-svc", Style::default().fg(Color::Cyan)),
-        ])),
-        ListItem::new(Line::from(vec![
-            Span::styled(" [14:21:45] ", Style::default().fg(Color::DarkGray)),
-            Span::styled("🔴", Style::default().fg(Color::Red)),
-            Span::styled(" ZOMBIE PROCESS DETECTED:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-        ])),
-        ListItem::new(Line::from(vec![
-            Span::raw("            "),
-            Span::styled("[zombie-proc]", Style::default().fg(Color::Red)),
-            Span::styled(" (PID 999)", Style::default().fg(Color::Gray)),
-        ])),
-    ];
+fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
+    use crate::net::ConnectionState;
 
-    let logs = List::new(log_items)
-        .block(
-            Block::default()
-                .title(vec![
-                    Span::styled("━ 📜 Grimoire (Logs & Alerts) ", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
-                    Span::styled("━━━━━━━", Style::default().fg(Color::Rgb(255, 140, 0))),
-                ])
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Rgb(255, 140, 0)))
-        );
+    let mut log_items = Vec::new();
+
+    // Show connection error if any
+    if let Some(ref error) = app.conn_error {
+        log_items.push(ListItem::new(Line::from(vec![
+            Span::styled(" ℹ️ ", Style::default().fg(Color::Cyan)),
+            Span::styled(error, Style::default().fg(BONE_WHITE)),
+        ])));
+    } else {
+        // Show connection count
+        log_items.push(ListItem::new(Line::from(vec![
+            Span::styled(" 🔗 ", Style::default().fg(NEON_PURPLE)),
+            Span::styled(
+                format!("Active Connections: {}", app.connections.len()),
+                Style::default().fg(TOXIC_GREEN).add_modifier(Modifier::BOLD),
+            ),
+        ])));
+    }
+
+    // Show top 15 connections
+    for (idx, conn) in app.connections.iter().take(15).enumerate() {
+        // Color based on connection state
+        let state_color = match conn.state {
+            ConnectionState::Established => TOXIC_GREEN,
+            ConnectionState::Listen => BONE_WHITE,
+            ConnectionState::TimeWait | ConnectionState::CloseWait => PUMPKIN_ORANGE,
+            ConnectionState::Close => BLOOD_RED,
+            _ => Color::Gray,
+        };
+
+        // Format: local:port -> remote:port [STATE]
+        let conn_line = if conn.remote_addr == "0.0.0.0" && conn.remote_port == 0 {
+            // Listening socket
+            format!(" {}:{} [LISTEN]", conn.local_addr, conn.local_port)
+        } else {
+            // Active connection
+            format!(
+                " {}:{} → {}:{} [{:?}]",
+                conn.local_addr, conn.local_port, conn.remote_addr, conn.remote_port, conn.state
+            )
+        };
+
+        log_items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!("{:2}.", idx + 1), Style::default().fg(Color::DarkGray)),
+            Span::styled(conn_line, Style::default().fg(state_color)),
+        ])));
+    }
+
+    // Show "..." if there are more connections
+    if app.connections.len() > 15 {
+        log_items.push(ListItem::new(Line::from(vec![Span::styled(
+            format!(" ... and {} more", app.connections.len() - 15),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        )])));
+    }
+
+    let logs = List::new(log_items).block(
+        Block::default()
+            .title(vec![
+                Span::styled(
+                    "━ 🌐 Active Connections ",
+                    Style::default()
+                        .fg(PUMPKIN_ORANGE)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("━━━━━━━", Style::default().fg(PUMPKIN_ORANGE)),
+            ])
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(PUMPKIN_ORANGE)),
+    );
 
     f.render_widget(logs, area);
 }

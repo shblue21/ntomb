@@ -2,6 +2,7 @@
 // A Halloween-themed TUI for the Kiroween hackathon
 
 mod app;
+mod net;
 mod ui;
 
 use anyhow::Result;
