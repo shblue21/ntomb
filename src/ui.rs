@@ -122,7 +122,6 @@ pub fn draw(f: &mut Frame, app: &mut AppState) {
 
 fn render_banner(f: &mut Frame, area: Rect) {
     let banner_text = vec![
-        Line::from(""),
         Line::from(vec![
             Span::styled("   _   _  _____  ____   __  __  ____  ", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
         ]),
