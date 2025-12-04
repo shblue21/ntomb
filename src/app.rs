@@ -14,6 +14,7 @@ pub enum GraveyardMode {
 }
 
 /// Number of log entries in the grimoire (for bounds checking)
+#[allow(dead_code)]
 const LOG_ENTRY_COUNT: usize = 6;
 
 /// Tick interval for pulse animation (100ms)
@@ -31,9 +32,11 @@ pub struct AppState {
     pub running: bool,
 
     /// Currently selected node index in the network map
+    #[allow(dead_code)]
     pub selected_node: usize,
 
     /// Currently selected log entry index
+    #[allow(dead_code)]
     pub selected_log: usize,
 
     /// Traffic history data (last 60 samples)
@@ -177,13 +180,14 @@ impl AppState {
 
         // Add some variation
         let variation = ((t * 2.3).sin() * 10.0) + ((t * 1.7).cos() * 5.0);
-        let new_value = (base_value + variation).max(10.0).min(100.0) as u64;
+        let new_value = (base_value + variation).clamp(10.0, 100.0) as u64;
 
         // Add to history
         self.traffic_history.push(new_value);
     }
 
     /// Move log selection up (decrease index)
+    #[allow(dead_code)]
     pub fn select_previous_log(&mut self) {
         if self.selected_log > 0 {
             self.selected_log -= 1;
@@ -191,6 +195,7 @@ impl AppState {
     }
 
     /// Move log selection down (increase index)
+    #[allow(dead_code)]
     pub fn select_next_log(&mut self) {
         if self.selected_log < LOG_ENTRY_COUNT.saturating_sub(1) {
             self.selected_log += 1;
