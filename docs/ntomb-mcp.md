@@ -1,10 +1,13 @@
-# ntomb-os-intel MCP Server
+# ntomb-os-intel MCP Server (Security Analyst Edition)
 
-ntomb TUI를 위한 OS/네트워크 인텔리전스 MCP 서버입니다.
+ntomb TUI를 위한 OS/네트워크 인텔리전스 + 보안 분석 MCP 서버입니다.
 
 ## 개요
 
-`ntomb-os-intel`은 로컬 머신의 프로세스 및 네트워크 연결 정보를 Kiro에서 도구처럼 사용할 수 있게 해주는 MCP 서버입니다.
+`ntomb-os-intel`은 두 가지 역할을 수행합니다:
+
+1. **OS 인텔리전스**: 프로세스/네트워크 연결 정보 제공
+2. **보안 분석가**: `suspicious_detection.yaml` 규칙을 적용해 수상한 연결 탐지 및 설명
 
 ## 설치
 
@@ -16,139 +19,242 @@ pip install -r requirements.txt
 ## 로컬 테스트
 
 ```bash
-# 직접 실행
 python -m ntomb_mcp
-
-# 또는
-python ntomb_mcp/server.py
 ```
 
 ## Kiro에서 확인
 
 1. Kiro 재시작 또는 MCP 서버 재연결
-2. 채팅에서 `/tools` 입력하여 도구 목록 확인
-3. `list_connections`, `list_processes`, `get_suspicious_connections` 도구가 보여야 함
+2. 채팅에서 도구 목록 확인
+3. 아래 도구들이 사용 가능해야 함
+
+---
 
 ## 제공 도구
 
-### 1. `list_connections`
+### 기본 도구 (OS Intelligence)
 
+#### `list_connections`
 현재 TCP 연결 목록을 반환합니다.
 
-**파라미터:**
-- `state_filter` (optional): 연결 상태 필터 (예: "ESTABLISHED", "LISTEN")
-- `pid_filter` (optional): 특정 PID만 필터
-
-**반환 스키마:**
 ```json
-[
-  {
-    "pid": 1234,
-    "process_name": "nginx",
-    "local_address": "0.0.0.0",
-    "local_port": 80,
-    "remote_address": "192.168.1.100",
-    "remote_port": 54321,
-    "state": "ESTABLISHED",
-    "proto": "tcp"
-  }
-]
+{
+  "pid": 1234,
+  "process_name": "nginx",
+  "local_address": "0.0.0.0",
+  "local_port": 80,
+  "remote_address": "192.168.1.100",
+  "remote_port": 54321,
+  "state": "ESTABLISHED",
+  "proto": "tcp"
+}
 ```
 
-### 2. `list_processes`
-
+#### `list_processes`
 실행 중인 프로세스 목록을 반환합니다.
 
-**파라미터:**
-- `name_filter` (optional): 프로세스 이름 필터
-- `with_connections` (optional): 연결 수 포함 여부
+#### `get_suspicious_connections`
+기본 휴리스틱으로 수상한 연결을 식별합니다.
 
-**반환 스키마:**
+---
+
+### 보안 분석 도구 (Security Analyst)
+
+#### `analyze_connections` ⭐
+**모든 연결에 suspicious_detection.yaml 규칙을 적용합니다.**
+
+```json
+{
+  "summary": {
+    "total_connections": 42,
+    "suspicious_count": 3,
+    "by_severity": {
+      "critical": 0,
+      "high": 1,
+      "medium": 2,
+      "low": 0
+    },
+    "detected_tags": ["beacon", "high_port", "suspicious"]
+  },
+  "findings": {
+    "high": [...],
+    "medium": [...]
+  }
+}
+```
+
+#### `explain_connection` ⭐
+**특정 연결이 왜 수상한지 한국어로 설명합니다.**
+
+파라미터:
+- `pid`: 프로세스 ID
+- `remote_address`: 원격 IP
+- `remote_port`: 원격 포트
+
+반환 예시:
+```json
+{
+  "found": true,
+  "is_suspicious": true,
+  "overall_severity": "high",
+  "explanations": [
+    {
+      "rule": "High-Port Beaconing Pattern",
+      "severity": "high",
+      "explanation_ko": "고포트 비콘: 49152 이상의 포트로 반복 연결하는 패턴입니다. C2 비콘 통신일 수 있습니다."
+    }
+  ],
+  "investigation_steps_ko": [
+    "1. 프로세스 확인: `ps -p 1234 -o pid,ppid,user,cmd`",
+    "2. 연결 빈도 분석: 주기적인 패턴이 있는지 확인",
+    "3. 원격 IP 평판 조회: VirusTotal, AbuseIPDB 등에서 확인"
+  ],
+  "summary_ko": "⚠️ 수상한 연결 감지 (위험도: 높음)..."
+}
+```
+
+#### `get_detection_rules`
+**suspicious_detection.yaml의 모든 규칙을 반환합니다.**
+
 ```json
 [
   {
+    "id": "high_port_beaconing",
+    "name": "High-Port Beaconing Pattern",
+    "description": "Detects frequent outbound connections...",
+    "severity": "high",
+    "tags": ["beacon", "c2", "exfiltration"],
+    "explanation_ko": "고포트 비콘: 49152 이상의 포트로 반복 연결하는 패턴입니다..."
+  }
+]
+```
+
+#### `compare_baseline`
+**현재 연결을 베이스라인과 비교합니다.**
+
+파라미터:
+- `baseline_pids`: 예상되는 PID 목록
+- `baseline_remotes`: 예상되는 원격 주소 목록 (IP:port 형식)
+
+```json
+{
+  "summary": {
+    "total_current_connections": 42,
+    "new_pids_count": 2,
+    "new_remotes_count": 5
+  },
+  "new_remote_endpoints": ["203.0.113.42:54321", ...],
+  "recommendation_ko": "⚠️ 새로운 프로세스 2개가 네트워크 연결을 생성했습니다..."
+}
+```
+
+#### `suggest_investigation`
+**특정 프로세스에 대한 조사 가이드를 제공합니다.**
+
+파라미터:
+- `pid`: 조사할 프로세스 ID
+
+```json
+{
+  "process": {
     "pid": 1234,
-    "name": "nginx",
-    "cmdline": "nginx: master process",
-    "cpu_percent": 0.5,
-    "memory_percent": 1.23,
-    "connection_count": 42
-  }
-]
+    "name": "unknown_app",
+    "cmdline": "/usr/bin/unknown_app --daemon"
+  },
+  "connection_count": 5,
+  "suspicious_count": 2,
+  "overall_severity": "high",
+  "detected_tags": ["beacon", "c2"],
+  "investigation_steps_ko": [
+    "1. 프로세스 상세 확인: `ps -p 1234 -o pid,ppid,user,stat,start,cmd`",
+    "2. 열린 파일 확인: `lsof -p 1234`",
+    "3. 네트워크 연결 확인: `ss -tunap | grep 1234`",
+    "4. 연결 패턴 분석: 주기적인 연결 시도가 있는지 확인",
+    "5. 원격 IP 평판 조회: VirusTotal, AbuseIPDB 등"
+  ],
+  "summary_ko": "⚠️ 프로세스 'unknown_app' (PID: 1234)에서 5개 연결 중 2개가 수상한 패턴을 보입니다."
+}
 ```
 
-### 3. `get_suspicious_connections`
+---
 
-ntomb 휴리스틱을 적용하여 수상한 연결을 식별합니다.
+## 사용 예시
 
-**파라미터:**
-- `min_duration_seconds` (default: 600): 장기 연결 기준 (초)
-- `high_port_threshold` (default: 49152): 고포트 기준
+### Kiro 채팅에서:
 
-**반환 스키마:**
-```json
-[
-  {
-    "pid": 5678,
-    "process_name": "unknown_app",
-    "local_address": "192.168.1.10",
-    "local_port": 54321,
-    "remote_address": "203.0.113.42",
-    "remote_port": 54321,
-    "state": "ESTABLISHED",
-    "reasons": ["external_high_port"]
-  }
-]
+```
+사용자: "이 서버에서 수상한 연결 있어?"
+
+Kiro: [analyze_connections 호출]
+      "3개 연결이 수상한 패턴을 보입니다:
+       - PID 4521 (unknown_app) → 203.0.113.42:54321 [high_port_beaconing]
+       - PID 1234 (nginx) → 10.0.0.5:8080 [unexpected_listener]
+       
+       가장 위험한 연결은 PID 4521입니다. 자세히 볼까요?"
+
+사용자: "4521 자세히 분석해줘"
+
+Kiro: [suggest_investigation(pid=4521) 호출]
+      "프로세스 'unknown_app'에서 C2 비콘 패턴이 감지되었습니다.
+       
+       권장 조사 단계:
+       1. ps -p 4521 -o pid,ppid,user,cmd
+       2. lsof -p 4521
+       3. 원격 IP 203.0.113.42를 VirusTotal에서 확인
+       ..."
 ```
 
-**감지 이유 태그:**
-- `high_port_listener`: 고포트에서 LISTEN 중
-- `external_high_port`: 외부 IP의 고포트로 연결
-- `close_wait_leak`: CLOSE_WAIT 상태 (리소스 누수 가능성)
+---
 
 ## Rust Struct 매핑
 
-ntomb TUI에서 사용할 Rust struct 예시:
+ntomb TUI에서 사용할 Rust struct:
 
 ```rust
 #[derive(Debug, Deserialize)]
-pub struct Connection {
-    pub pid: u32,
-    pub process_name: String,
-    pub local_address: String,
-    pub local_port: u16,
-    pub remote_address: String,
-    pub remote_port: u16,
-    pub state: String,
-    pub proto: String,
+pub struct AnalysisReport {
+    pub summary: AnalysisSummary,
+    pub findings: Findings,
+    pub rules_loaded: usize,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Process {
-    pub pid: u32,
-    pub name: String,
-    pub cmdline: String,
-    pub cpu_percent: f32,
-    pub memory_percent: f32,
-    #[serde(default)]
-    pub connection_count: Option<u32>,
+pub struct AnalysisSummary {
+    pub total_connections: usize,
+    pub suspicious_count: usize,
+    pub by_severity: HashMap<String, usize>,
+    pub detected_tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SuspiciousConnection {
-    pub pid: u32,
-    pub process_name: String,
-    pub local_address: String,
-    pub local_port: u16,
-    pub remote_address: String,
-    pub remote_port: u16,
-    pub state: String,
-    pub reasons: Vec<String>,
+pub struct ConnectionExplanation {
+    pub found: bool,
+    pub is_suspicious: bool,
+    pub overall_severity: String,
+    pub tags: Vec<String>,
+    pub explanations: Vec<RuleExplanation>,
+    pub investigation_steps_ko: Vec<String>,
+    pub summary_ko: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RuleExplanation {
+    pub rule: String,
+    pub severity: String,
+    pub explanation_ko: String,
+    pub match_reasons: Vec<String>,
 }
 ```
+
+---
 
 ## 권한 참고
 
 - 일반 사용자: 자신의 프로세스 연결만 조회 가능
 - root/sudo: 모든 프로세스 연결 조회 가능
 - 권한 부족 시 빈 배열 반환 (에러 없음)
+
+## 감지 규칙 위치
+
+규칙은 `.kiro/specs/suspicious_detection.yaml`에서 로드됩니다.
+규칙을 수정하면 MCP 서버 재시작 후 반영됩니다.
