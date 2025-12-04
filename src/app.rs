@@ -1,6 +1,7 @@
 // Application state management
 
 use crate::net::{self, Connection};
+use ratatui::widgets::ListState;
 use std::time::{Duration, Instant};
 
 /// Graveyard view mode
@@ -124,6 +125,9 @@ pub struct AppState {
     /// Currently selected connection index (Active Connections list)
     pub selected_connection: Option<usize>,
 
+    /// List state for Active Connections (enables scrolling)
+    pub connection_list_state: ListState,
+
     /// Refresh interval configuration
     pub refresh_config: RefreshConfig,
 }
@@ -149,6 +153,7 @@ impl AppState {
             graveyard_mode: GraveyardMode::default(),
             selected_process_pid: None,
             selected_connection: None,
+            connection_list_state: ListState::default(),
             refresh_config: RefreshConfig::new(),
         }
     }
@@ -265,17 +270,21 @@ impl AppState {
     pub fn select_previous_connection(&mut self) {
         if self.connections.is_empty() {
             self.selected_connection = None;
+            self.connection_list_state.select(None);
             return;
         }
 
         match self.selected_connection {
             None => {
                 // Start at the last connection
-                self.selected_connection = Some(self.connections.len() - 1);
+                let idx = self.connections.len() - 1;
+                self.selected_connection = Some(idx);
+                self.connection_list_state.select(Some(idx));
             }
             Some(idx) => {
                 if idx > 0 {
                     self.selected_connection = Some(idx - 1);
+                    self.connection_list_state.select(Some(idx - 1));
                 }
             }
         }
@@ -285,6 +294,7 @@ impl AppState {
     pub fn select_next_connection(&mut self) {
         if self.connections.is_empty() {
             self.selected_connection = None;
+            self.connection_list_state.select(None);
             return;
         }
 
@@ -292,10 +302,12 @@ impl AppState {
             None => {
                 // Start at the first connection
                 self.selected_connection = Some(0);
+                self.connection_list_state.select(Some(0));
             }
             Some(idx) => {
                 if idx < self.connections.len() - 1 {
                     self.selected_connection = Some(idx + 1);
+                    self.connection_list_state.select(Some(idx + 1));
                 }
             }
         }
