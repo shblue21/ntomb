@@ -1,12 +1,12 @@
 # Implementation Plan
 
-- [-] 1. Create RefreshConfig struct and constants
-  - [ ] 1.1 Define RefreshConfig struct in src/app.rs
+- [x] 1. Create RefreshConfig struct and constants
+  - [x] 1.1 Define RefreshConfig struct in src/app.rs
     - Add ui_refresh_ms, data_refresh_ms, last_change fields
     - Implement new() with default values (100ms UI, 1000ms data)
     - Implement ui_interval() and data_interval() helper methods
     - _Requirements: 1.1, 2.1_
-  - [ ] 1.2 Define interval constants
+  - [x] 1.2 Define interval constants
     - Add MIN_UI_REFRESH_MS = 50, MAX_UI_REFRESH_MS = 1000, UI_REFRESH_STEP = 50
     - Add MIN_DATA_REFRESH_MS = 500, MAX_DATA_REFRESH_MS = 5000, DATA_REFRESH_STEP = 500
     - Add CHANGE_HIGHLIGHT_DURATION = 500ms
@@ -15,17 +15,17 @@
     - **Property 4: Duration conversion accuracy**
     - **Validates: Requirements 6.1, 6.2**
 
-- [ ] 2. Add RefreshConfig to AppState
-  - [ ] 2.1 Add refresh_config field to AppState
+- [x] 2. Add RefreshConfig to AppState
+  - [x] 2.1 Add refresh_config field to AppState
     - Add pub refresh_config: RefreshConfig field
     - Initialize in AppState::new()
     - _Requirements: 1.1, 2.1_
-  - [ ] 2.2 Implement UI interval adjustment methods
+  - [x] 2.2 Implement UI interval adjustment methods
     - Implement increase_ui_refresh_rate() (decrease interval by 50ms, clamp to 50ms)
     - Implement decrease_ui_refresh_rate() (increase interval by 50ms, clamp to 1000ms)
     - Update last_change timestamp on each adjustment
     - _Requirements: 1.2, 1.3, 1.4, 1.5_
-  - [ ] 2.3 Implement data interval adjustment methods
+  - [x] 2.3 Implement data interval adjustment methods
     - Implement increase_data_refresh_rate() (decrease interval by 500ms, clamp to 500ms)
     - Implement decrease_data_refresh_rate() (increase interval by 500ms, clamp to 5000ms)
     - Update last_change timestamp on each adjustment
@@ -40,12 +40,12 @@
     - **Property 3: Interval adjustment consistency**
     - **Validates: Requirements 1.2, 1.3, 2.2, 2.3**
 
-- [ ] 3. Update main event loop
-  - [ ] 3.1 Use dynamic UI refresh interval in main.rs
+- [x] 3. Update main event loop
+  - [x] 3.1 Use dynamic UI refresh interval in main.rs
     - Replace hardcoded tick_rate with app.refresh_config.ui_interval()
     - Pass dynamic interval to event::poll()
     - _Requirements: 6.1_
-  - [ ] 3.2 Update connection refresh logic in AppState
+  - [x] 3.2 Update connection refresh logic in AppState
     - Use app.refresh_config.data_interval() instead of hardcoded CONN_REFRESH_INTERVAL
     - Update refresh_connections() to check elapsed time against dynamic interval
     - _Requirements: 6.2_
@@ -53,32 +53,32 @@
     - Test that changing intervals affects timing behavior
     - _Requirements: 6.1, 6.2_
 
-- [ ] 4. Add keyboard input handlers
-  - [ ] 4.1 Add UI refresh rate controls to main.rs
+- [x] 4. Add keyboard input handlers
+  - [x] 4.1 Add UI refresh rate controls to main.rs
     - Handle KeyCode::Char('+') and KeyCode::Char('=') → increase_ui_refresh_rate()
     - Handle KeyCode::Char('-') and KeyCode::Char('_') → decrease_ui_refresh_rate()
     - _Requirements: 1.2, 1.3_
-  - [ ] 4.2 Add data refresh rate controls to main.rs
+  - [x] 4.2 Add data refresh rate controls to main.rs
     - Handle Shift + '+' / '=' → increase_data_refresh_rate()
     - Handle Shift + '-' / '_' → decrease_data_refresh_rate()
     - Use key.modifiers.contains(KeyModifiers::SHIFT) to detect Shift key
     - _Requirements: 2.2, 2.3_
 
-- [ ] 5. Checkpoint - Verify core functionality
+- [x] 5. Checkpoint - Verify core functionality
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Display refresh intervals in Soul Inspector
-  - [ ] 6.1 Add refresh interval display to render_soul_inspector()
+- [x] 6. Display refresh intervals in Soul Inspector
+  - [x] 6.1 Add refresh interval display to render_soul_inspector()
     - Add "Refresh Rates" section after connection details
     - Display "UI Refresh: {ui_refresh_ms}ms"
     - Display "Data Refresh: {data_refresh_ms}ms"
     - _Requirements: 3.1, 3.2, 3.3_
-  - [ ] 6.2 Implement color coding for intervals
+  - [x] 6.2 Implement color coding for intervals
     - Create get_refresh_color() helper function
     - Green for default values, yellow for high frequency, red for very high frequency
     - Apply colors to interval values in display
     - _Requirements: 4.3_
-  - [ ] 6.3 Add visual feedback for recent changes
+  - [x] 6.3 Add visual feedback for recent changes
     - Check if last_change is within CHANGE_HIGHLIGHT_DURATION
     - Apply highlight style (bold, brighter color) to recently changed values
     - _Requirements: 4.1_
@@ -86,17 +86,17 @@
     - Test get_refresh_color() returns correct colors for various intervals
     - _Requirements: 4.3_
 
-- [ ] 7. Update status bar with keyboard hints
-  - [ ] 7.1 Add refresh rate control hints to render_status_bar()
+- [x] 7. Update status bar with keyboard hints
+  - [x] 7.1 Add refresh rate control hints to render_status_bar()
     - Add "+/-: UI Speed" hint
     - Add "Shift+/-: Data Speed" hint
     - Position after existing hints, before Q:R.I.P
     - _Requirements: 5.1, 5.2_
-  - [ ] 7.2 Handle status bar overflow gracefully
+  - [x] 7.2 Handle status bar overflow gracefully
     - Measure available width
     - Truncate or hide less important hints if terminal is narrow
     - Prioritize essential shortcuts (Q, P, arrow keys)
     - _Requirements: 5.3_
 
-- [ ] 8. Final Checkpoint - Verify complete functionality
+- [x] 8. Final Checkpoint - Verify complete functionality
   - Ensure all tests pass, ask the user if questions arise.

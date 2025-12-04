@@ -41,7 +41,6 @@ fn main() -> Result<()> {
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut app = AppState::new();
-    let tick_rate = std::time::Duration::from_millis(100);
 
     loop {
         // Update app state (animations, traffic history, etc.)
@@ -54,6 +53,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
         if !app.running {
             return Ok(());
         }
+
+        // Use dynamic UI refresh interval from config
+        let tick_rate = app.refresh_config.ui_interval();
 
         // Handle events with timeout
         if event::poll(tick_rate)? {
@@ -77,6 +79,13 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
                     // Switch panel with Tab (placeholder for now)
                     KeyCode::Tab => {
                         app.switch_panel();
+                    }
+                    // Refresh rate controls (unified)
+                    KeyCode::Char('+') | KeyCode::Char('=') => {
+                        app.increase_refresh_rate();
+                    }
+                    KeyCode::Char('-') | KeyCode::Char('_') => {
+                        app.decrease_refresh_rate();
                     }
                     _ => {}
                 }
