@@ -203,6 +203,46 @@ impl AppState {
         // For now, this is a placeholder
     }
 
+    /// Move connection selection up (decrease index)
+    pub fn select_previous_connection(&mut self) {
+        if self.connections.is_empty() {
+            self.selected_connection = None;
+            return;
+        }
+
+        match self.selected_connection {
+            None => {
+                // Start at the last connection
+                self.selected_connection = Some(self.connections.len() - 1);
+            }
+            Some(idx) => {
+                if idx > 0 {
+                    self.selected_connection = Some(idx - 1);
+                }
+            }
+        }
+    }
+
+    /// Move connection selection down (increase index)
+    pub fn select_next_connection(&mut self) {
+        if self.connections.is_empty() {
+            self.selected_connection = None;
+            return;
+        }
+
+        match self.selected_connection {
+            None => {
+                // Start at the first connection
+                self.selected_connection = Some(0);
+            }
+            Some(idx) => {
+                if idx < self.connections.len() - 1 {
+                    self.selected_connection = Some(idx + 1);
+                }
+            }
+        }
+    }
+
     /// Focus on the process of the selected connection
     pub fn focus_process_of_selected_connection(&mut self) {
         if let Some(conn_idx) = self.selected_connection {
@@ -297,5 +337,81 @@ mod tests {
             prop_assert_eq!(app.graveyard_mode, GraveyardMode::Host);
             prop_assert_eq!(app.selected_process_pid, None);
         }
+    }
+
+    #[test]
+    fn test_connection_selection_navigation() {
+        // Test with empty connections
+        let mut app = AppState::new();
+        app.select_next_connection();
+        assert_eq!(app.selected_connection, None);
+        app.select_previous_connection();
+        assert_eq!(app.selected_connection, None);
+
+        // Add some test connections
+        let test_conns = vec![
+            Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8080,
+                remote_addr: "192.168.1.1".to_string(),
+                remote_port: 443,
+                state: crate::net::ConnectionState::Established,
+                inode: Some(1),
+                pid: Some(100),
+                process_name: Some("proc1".to_string()),
+            },
+            Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8081,
+                remote_addr: "192.168.1.2".to_string(),
+                remote_port: 443,
+                state: crate::net::ConnectionState::Established,
+                inode: Some(2),
+                pid: Some(200),
+                process_name: Some("proc2".to_string()),
+            },
+            Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8082,
+                remote_addr: "192.168.1.3".to_string(),
+                remote_port: 443,
+                state: crate::net::ConnectionState::Established,
+                inode: Some(3),
+                pid: Some(300),
+                process_name: Some("proc3".to_string()),
+            },
+        ];
+        app.connections = test_conns;
+
+        // Test navigation from None
+        app.select_next_connection();
+        assert_eq!(app.selected_connection, Some(0));
+
+        // Navigate down
+        app.select_next_connection();
+        assert_eq!(app.selected_connection, Some(1));
+
+        app.select_next_connection();
+        assert_eq!(app.selected_connection, Some(2));
+
+        // Try to go beyond bounds (should stay at 2)
+        app.select_next_connection();
+        assert_eq!(app.selected_connection, Some(2));
+
+        // Navigate up
+        app.select_previous_connection();
+        assert_eq!(app.selected_connection, Some(1));
+
+        app.select_previous_connection();
+        assert_eq!(app.selected_connection, Some(0));
+
+        // Try to go below 0 (should stay at 0)
+        app.select_previous_connection();
+        assert_eq!(app.selected_connection, Some(0));
+
+        // Test navigation from None going up
+        app.selected_connection = None;
+        app.select_previous_connection();
+        assert_eq!(app.selected_connection, Some(2)); // Should wrap to last
     }
 }

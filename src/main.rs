@@ -67,12 +67,16 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
                     KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                         app.running = false;
                     }
-                    // Navigate logs with arrow keys
+                    // Navigate connections with arrow keys
                     KeyCode::Up => {
-                        app.select_previous_log();
+                        app.select_previous_connection();
                     }
                     KeyCode::Down => {
-                        app.select_next_log();
+                        app.select_next_connection();
+                    }
+                    // Toggle graveyard mode with 'p' key
+                    KeyCode::Char('p') | KeyCode::Char('P') => {
+                        app.toggle_graveyard_mode();
                     }
                     // Switch panel with Tab (placeholder for now)
                     KeyCode::Tab => {

@@ -55,18 +55,18 @@
 - [x] 5. Checkpoint - Verify data layer
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Add key bindings
-  - [ ] 6.1 Add 'p' key handler to main.rs
+- [x] 6. Add key bindings
+  - [x] 6.1 Add 'p' key handler to main.rs
     - Add KeyCode::Char('p') matching
     - Call app.toggle_graveyard_mode()
     - _Requirements: 4.2, 4.3_
-  - [ ] 6.2 Add connection selection key bindings
+  - [x] 6.2 Add connection selection key bindings
     - Modify Up/Down key handlers to change selected_connection
     - Add range checking logic (0 to connections.len() - 1)
     - _Requirements: 4.2_
 
-- [ ] 7. Modify Graveyard rendering (Process mode support)
-  - [ ] 7.1 Add connection filtering logic to render_network_map()
+- [x] 7. Modify Graveyard rendering (Process mode support)
+  - [x] 7.1 Add connection filtering logic to render_network_map()
     - Determine connections to display based on GraveyardMode
     - Process mode: Filter by selected_process_pid
     - Host mode: Use all connections
@@ -74,35 +74,35 @@
   - [ ]* 7.2 Property test: Process filtering accuracy
     - **Property 4: Process filtering accuracy**
     - **Validates: Requirements 5.2**
-  - [ ] 7.3 Change center node label in render_network_map()
+  - [x] 7.3 Change center node label in render_network_map()
     - Host mode: Display "⚰️ HOST"
     - Process mode: Display "⚰️ PROC: <name> (<pid>)"
     - _Requirements: 5.1_
   - [ ]* 7.4 Property test: Center node label accuracy
     - **Property 6: Center node label accuracy**
     - **Validates: Requirements 5.1**
-  - [ ] 7.5 Handle empty connections in render_network_map()
+  - [x] 7.5 Handle empty connections in render_network_map()
     - Display "(no active connections for this process)" message when Process mode has no connections
     - _Requirements: 5.3_
 
-- [ ] 8. Update Active Connections list in render_grimoire()
-  - [ ] 8.1 Add process info to connection display
+- [x] 8. Update Active Connections list in render_grimoire()
+  - [x] 8.1 Add process info to connection display
     - Add "[name(pid)]" tag if pid, process_name exist
     - Omit tag if not present
     - _Requirements: 6.1, 6.2_
   - [ ]* 8.2 Property test: Connection display formatting
     - **Property 5: Connection display formatting**
     - **Validates: Requirements 6.1, 6.2**
-  - [ ] 8.3 Highlight selected connection
+  - [x] 8.3 Highlight selected connection
     - Emphasize item at selected_connection index using Style with bg color or modifier
     - _Requirements: 4.2_
 
-- [ ] 9. Update status bar in render_status_bar()
-  - [ ] 9.1 Add mode-specific hint text
+- [x] 9. Update status bar in render_status_bar()
+  - [x] 9.1 Add mode-specific hint text
     - Host mode: Display "P:Focus Process"
     - Process mode: Display "P:Back to Host"
     - Pass app state to render_status_bar() to access graveyard_mode
     - _Requirements: 7.1, 7.2, 7.3_
 
-- [ ] 10. Final Checkpoint - Verify complete functionality
+- [-] 10. Final Checkpoint - Verify complete functionality
   - Ensure all tests pass, ask the user if questions arise.

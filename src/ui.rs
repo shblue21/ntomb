@@ -72,7 +72,7 @@ pub fn draw(f: &mut Frame, app: &AppState) {
     render_grimoire(f, right_chunks[1], app);
 
     // Status bar
-    render_status_bar(f, chunks[2]);
+    render_status_bar(f, chunks[2], app);
 }
 
 fn render_banner(f: &mut Frame, area: Rect) {
@@ -120,17 +120,39 @@ struct EndpointNode {
 }
 
 fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
+    use crate::app::GraveyardMode;
+    
     // Split: summary line + canvas
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(0)])
         .split(area);
 
-    // Collect endpoint data
+    // Filter connections based on GraveyardMode (Requirement 5.2)
+    let filtered_connections: Vec<&crate::net::Connection> = match app.graveyard_mode {
+        GraveyardMode::Host => {
+            // Host mode: Use all connections
+            app.connections.iter().collect()
+        }
+        GraveyardMode::Process => {
+            // Process mode: Filter by selected_process_pid
+            if let Some(selected_pid) = app.selected_process_pid {
+                app.connections
+                    .iter()
+                    .filter(|conn| conn.pid == Some(selected_pid))
+                    .collect()
+            } else {
+                // No pid selected, show nothing
+                Vec::new()
+            }
+        }
+    };
+
+    // Collect endpoint data from filtered connections
     let mut endpoints_map: HashMap<String, Vec<&crate::net::Connection>> = HashMap::new();
     let mut listen_count = 0;
 
-    for conn in &app.connections {
+    for conn in &filtered_connections {
         if conn.state == ConnectionState::Listen {
             listen_count += 1;
         } else if conn.remote_addr != "0.0.0.0" {
@@ -143,13 +165,37 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
 
     let endpoint_count = endpoints_map.len();
 
+    // Determine center node label based on mode (Requirement 5.1)
+    let center_label = match app.graveyard_mode {
+        GraveyardMode::Host => "⚰️ HOST".to_string(),
+        GraveyardMode::Process => {
+            if let Some(pid) = app.selected_process_pid {
+                // Find the process name from the filtered connections
+                let process_name = filtered_connections
+                    .iter()
+                    .find_map(|conn| {
+                        if conn.pid == Some(pid) {
+                            conn.process_name.clone()
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "unknown".to_string());
+                
+                format!("⚰️ PROC: {} ({})", process_name, pid)
+            } else {
+                "⚰️ HOST".to_string()
+            }
+        }
+    };
+
     // Summary line
     let summary = Paragraph::new(Line::from(vec![
         Span::styled(" 📊 ", Style::default().fg(NEON_PURPLE)),
         Span::styled(
             format!(
                 "Endpoints: {} | Listening: {} | Total: {}",
-                endpoint_count, listen_count, app.connections.len()
+                endpoint_count, listen_count, filtered_connections.len()
             ),
             Style::default().fg(BONE_WHITE),
         ),
@@ -218,6 +264,10 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     // Pulsing color for animation
     let pulse_color = interpolate_color((138, 43, 226), (187, 154, 247), app.pulse_phase);
 
+    // Capture values for closure
+    let is_empty = nodes.is_empty() && filtered_connections.is_empty();
+    let graveyard_mode = app.graveyard_mode;
+
     // Canvas with Braille markers
     let canvas = Canvas::default()
         .block(
@@ -252,8 +302,9 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 });
             }
 
-            // Draw central host node
-            ctx.print(cx - 5.0, cy + 2.0, Span::styled("⚰️ HOST", Style::default().fg(PUMPKIN_ORANGE).add_modifier(Modifier::BOLD)));
+            // Draw central node with mode-specific label (Requirement 5.1)
+            let label_offset = (center_label.len() as f64 / 2.0) * 1.2;
+            ctx.print(cx - label_offset, cy + 2.0, Span::styled(center_label.clone(), Style::default().fg(PUMPKIN_ORANGE).add_modifier(Modifier::BOLD)));
 
             // Draw endpoint nodes
             for node in &nodes {
@@ -285,13 +336,19 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 );
             }
 
-            // Show message if no connections
-            if nodes.is_empty() && app.connections.is_empty() {
+            // Show message if no connections (Requirement 5.3)
+            if is_empty {
+                let empty_message = match graveyard_mode {
+                    GraveyardMode::Process => "(no active connections for this process)",
+                    GraveyardMode::Host => "The graveyard is quiet...",
+                };
+                
+                let msg_offset = (empty_message.len() as f64 / 2.0) * 1.2;
                 ctx.print(
-                    cx - 12.0,
-                    cy,
+                    cx - msg_offset,
+                    cy - 5.0,
                     Span::styled(
-                        "The graveyard is quiet...",
+                        empty_message,
                         Style::default().fg(BONE_WHITE).add_modifier(Modifier::ITALIC),
                     ),
                 );
@@ -475,10 +532,28 @@ fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
             )
         };
 
+        // Add process info tag if available (Requirements 6.1, 6.2)
+        let process_tag = if let (Some(pid), Some(ref name)) = (conn.pid, &conn.process_name) {
+            format!(" [{}({})]", name, pid)
+        } else {
+            String::new()
+        };
+
+        // Check if this connection is selected (Requirement 4.2)
+        let is_selected = app.selected_connection == Some(idx);
+        
+        // Apply highlighting to selected connection
+        let item_style = if is_selected {
+            Style::default().bg(Color::Rgb(47, 51, 77)) // Deep Indigo background
+        } else {
+            Style::default()
+        };
+
         log_items.push(ListItem::new(Line::from(vec![
             Span::styled(format!("{:2}.", idx + 1), Style::default().fg(Color::DarkGray)),
             Span::styled(conn_line, Style::default().fg(state_color)),
-        ])));
+            Span::styled(process_tag, Style::default().fg(Color::Cyan)),
+        ])).style(item_style));
     }
 
     // Show "..." if there are more connections
@@ -508,13 +583,24 @@ fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
     f.render_widget(logs, area);
 }
 
-fn render_status_bar(f: &mut Frame, area: Rect) {
+fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
+    use crate::app::GraveyardMode;
+    
+    // Determine mode-specific hint text (Requirements 7.1, 7.2)
+    let mode_hint = match app.graveyard_mode {
+        GraveyardMode::Host => "P:Focus Process",
+        GraveyardMode::Process => "P:Back to Host",
+    };
+    
     let status_text = Line::from(vec![
         Span::styled(" 💀 ", Style::default().fg(Color::Rgb(138, 43, 226))),
         Span::styled("F1:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
         Span::raw("Help | "),
         Span::styled("⇆ TAB:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
         Span::raw("Switch Pane | "),
+        Span::styled("P:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
+        Span::raw(mode_hint),
+        Span::raw(" | "),
         Span::styled("🖱️ Drag:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
         Span::raw("Pan Map | "),
         Span::styled("➕/➖", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
