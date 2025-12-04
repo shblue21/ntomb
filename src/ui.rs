@@ -77,7 +77,7 @@ fn get_refresh_color(interval_ms: u64, default_ms: u64, recently_changed: bool) 
 }
 
 /// Main UI drawing function
-pub fn draw(f: &mut Frame, app: &AppState) {
+pub fn draw(f: &mut Frame, app: &mut AppState) {
     let size = f.area();
 
     // Main layout: banner, body, status bar
@@ -555,30 +555,13 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
     f.render_widget(socket_paragraph, inspector_chunks[2]);
 }
 
-fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
+fn render_grimoire(f: &mut Frame, area: Rect, app: &mut AppState) {
     use crate::net::ConnectionState;
 
     let mut log_items = Vec::new();
 
-    // Show connection error if any
-    if let Some(ref error) = app.conn_error {
-        log_items.push(ListItem::new(Line::from(vec![
-            Span::styled(" ℹ️ ", Style::default().fg(Color::Cyan)),
-            Span::styled(error, Style::default().fg(BONE_WHITE)),
-        ])));
-    } else {
-        // Show connection count
-        log_items.push(ListItem::new(Line::from(vec![
-            Span::styled(" 🔗 ", Style::default().fg(NEON_PURPLE)),
-            Span::styled(
-                format!("Active Connections: {}", app.connections.len()),
-                Style::default().fg(TOXIC_GREEN).add_modifier(Modifier::BOLD),
-            ),
-        ])));
-    }
-
-    // Show top 15 connections
-    for (idx, conn) in app.connections.iter().take(15).enumerate() {
+    // Show all connections (scrollable)
+    for (idx, conn) in app.connections.iter().enumerate() {
         // Color based on connection state
         let state_color = match conn.state {
             ConnectionState::Established => TOXIC_GREEN,
@@ -624,31 +607,27 @@ fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
         ])).style(item_style));
     }
 
-    // Show "..." if there are more connections
-    if app.connections.len() > 15 {
-        log_items.push(ListItem::new(Line::from(vec![Span::styled(
-            format!(" ... and {} more", app.connections.len() - 15),
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-        )])));
-    }
+    let title = format!("━ 🌐 Active Connections ({}) ", app.connections.len());
+    
+    let logs = List::new(log_items)
+        .block(
+            Block::default()
+                .title(vec![
+                    Span::styled(
+                        title,
+                        Style::default()
+                            .fg(PUMPKIN_ORANGE)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("━━━━━━━", Style::default().fg(PUMPKIN_ORANGE)),
+                ])
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(PUMPKIN_ORANGE)),
+        )
+        .highlight_style(Style::default().bg(Color::Rgb(47, 51, 77)));
 
-    let logs = List::new(log_items).block(
-        Block::default()
-            .title(vec![
-                Span::styled(
-                    "━ 🌐 Active Connections ",
-                    Style::default()
-                        .fg(PUMPKIN_ORANGE)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("━━━━━━━", Style::default().fg(PUMPKIN_ORANGE)),
-            ])
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(PUMPKIN_ORANGE)),
-    );
-
-    f.render_widget(logs, area);
+    f.render_stateful_widget(logs, area, &mut app.connection_list_state);
 }
 
 fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
