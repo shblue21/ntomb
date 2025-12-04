@@ -3,6 +3,7 @@
 
 mod app;
 mod net;
+mod procfs;
 mod ui;
 
 use anyhow::Result;
