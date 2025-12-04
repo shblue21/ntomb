@@ -3,6 +3,16 @@
 use crate::net::{self, Connection};
 use std::time::{Duration, Instant};
 
+/// Graveyard view mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GraveyardMode {
+    /// Host-wide view (default)
+    #[default]
+    Host,
+    /// Selected process view
+    Process,
+}
+
 /// Number of log entries in the grimoire (for bounds checking)
 const LOG_ENTRY_COUNT: usize = 6;
 
@@ -52,6 +62,15 @@ pub struct AppState {
 
     /// Connection refresh error message (if any)
     pub conn_error: Option<String>,
+
+    /// Graveyard view mode
+    pub graveyard_mode: GraveyardMode,
+
+    /// Selected process PID in Process mode
+    pub selected_process_pid: Option<i32>,
+
+    /// Currently selected connection index (Active Connections list)
+    pub selected_connection: Option<usize>,
 }
 
 impl AppState {
@@ -72,6 +91,9 @@ impl AppState {
             connections: Vec::new(),
             last_conn_refresh: now,
             conn_error: None,
+            graveyard_mode: GraveyardMode::default(),
+            selected_process_pid: None,
+            selected_connection: None,
         }
     }
 
@@ -116,6 +138,19 @@ impl AppState {
 
         match net::collect_connections() {
             Ok(conns) => {
+                // On Linux, attach process information to connections
+                // This is a best-effort operation - failures are logged but don't prevent
+                // the connections from being displayed
+                #[cfg(target_os = "linux")]
+                let conns = {
+                    let mut conns = conns;
+                    if let Err(e) = crate::procfs::attach_process_info(&mut conns) {
+                        // Log the error but continue - process mapping is optional
+                        tracing::warn!(error = %e, "Failed to attach process info to connections");
+                    }
+                    conns
+                };
+
                 self.connections = conns;
                 self.conn_error = None;
             }
@@ -167,10 +202,100 @@ impl AppState {
         // TODO: Implement panel switching logic
         // For now, this is a placeholder
     }
+
+    /// Focus on the process of the selected connection
+    pub fn focus_process_of_selected_connection(&mut self) {
+        if let Some(conn_idx) = self.selected_connection {
+            if let Some(conn) = self.connections.get(conn_idx) {
+                if let Some(pid) = conn.pid {
+                    self.graveyard_mode = GraveyardMode::Process;
+                    self.selected_process_pid = Some(pid);
+                }
+            }
+        }
+    }
+
+    /// Clear process focus, return to Host mode
+    pub fn clear_process_focus(&mut self) {
+        self.graveyard_mode = GraveyardMode::Host;
+        self.selected_process_pid = None;
+    }
+
+    /// Toggle focus based on current mode
+    pub fn toggle_graveyard_mode(&mut self) {
+        match self.graveyard_mode {
+            GraveyardMode::Host => {
+                // Switch to Process mode if a connection is selected
+                self.focus_process_of_selected_connection();
+            }
+            GraveyardMode::Process => {
+                // Return to Host mode
+                self.clear_process_focus();
+            }
+        }
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+        
+        /// **Feature: process-focus, Property 3: Mode toggle consistency**
+        /// **Validates: Requirements 4.2, 4.3**
+        ///
+        /// For any AppState, calling toggle_graveyard_mode() when in Host mode
+        /// with a valid selected connection SHALL result in Process mode, and
+        /// calling it again SHALL return to Host mode with selected_process_pid
+        /// reset to None.
+        #[test]
+        fn prop_mode_toggle_consistency(
+            pid in 1i32..10000i32,
+            conn_idx in 0usize..10usize,
+        ) {
+            // Create a test connection with the generated pid
+            let test_conn = Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8080,
+                remote_addr: "192.168.1.1".to_string(),
+                remote_port: 443,
+                state: crate::net::ConnectionState::Established,
+                inode: Some(12345),
+                pid: Some(pid),
+                process_name: Some("test_process".to_string()),
+            };
+
+            // Create app state with the test connection
+            let mut app = AppState::new();
+            app.connections = vec![test_conn];
+            app.selected_connection = Some(conn_idx.min(app.connections.len() - 1));
+
+            // Initial state should be Host mode
+            prop_assert_eq!(app.graveyard_mode, GraveyardMode::Host);
+            prop_assert_eq!(app.selected_process_pid, None);
+
+            // First toggle: Host -> Process
+            app.toggle_graveyard_mode();
+
+            // Should now be in Process mode with the selected pid
+            prop_assert_eq!(app.graveyard_mode, GraveyardMode::Process);
+            prop_assert_eq!(app.selected_process_pid, Some(pid));
+
+            // Second toggle: Process -> Host
+            app.toggle_graveyard_mode();
+
+            // Should be back in Host mode with pid reset to None
+            prop_assert_eq!(app.graveyard_mode, GraveyardMode::Host);
+            prop_assert_eq!(app.selected_process_pid, None);
+        }
     }
 }
