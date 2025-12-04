@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ntomb-os-intel": {
+      "command": "python",
+      "args": ["-m", "ntomb_mcp"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": [
+        "list_connections",
+        "list_processes"
+      ]
+    }
+  }
+}

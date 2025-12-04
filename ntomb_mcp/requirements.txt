@@ -1,0 +1,3 @@
+# ntomb-os-intel MCP Server dependencies
+mcp>=1.0.0
+psutil>=5.9.0
