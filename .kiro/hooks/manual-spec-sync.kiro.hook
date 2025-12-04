@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Manually sync all spec tasks",
+  "description": "버튼 클릭 시 모든 스펙의 tasks.md를 requirements/design과 일괄 동기화",
+  "version": "1",
+  "when": {
+    "type": "manual"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Review all spec directories under .kiro/specs/. For each spec that has requirements.md and design.md, ensure tasks.md is synchronized: every requirement should have at least one corresponding task, mark completed items with [x], keep TODOs as [ ], split large tasks into small implementation-ready items, and remove duplicates."
+  }
+}
