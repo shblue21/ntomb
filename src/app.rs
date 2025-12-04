@@ -23,8 +23,57 @@ const TICK_INTERVAL_MS: u128 = 100;
 /// Blink interval for zombie animation (500ms)
 const BLINK_INTERVAL_MS: u128 = 500;
 
-/// Connection refresh interval (1 second)
-const CONN_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+
+
+// Refresh interval bounds and steps
+/// Minimum refresh interval in milliseconds
+const MIN_REFRESH_MS: u64 = 50;
+/// Maximum refresh interval in milliseconds
+const MAX_REFRESH_MS: u64 = 1000;
+/// Refresh interval adjustment step in milliseconds
+const REFRESH_STEP: u64 = 50;
+/// Data refresh multiplier (data refreshes at N times the UI interval)
+const DATA_REFRESH_MULTIPLIER: u64 = 10;
+
+/// Duration to highlight recently changed refresh intervals
+pub const CHANGE_HIGHLIGHT_DURATION: Duration = Duration::from_millis(500);
+
+/// Configuration for refresh intervals (unified)
+#[derive(Debug, Clone)]
+pub struct RefreshConfig {
+    /// Refresh interval in milliseconds (50-1000ms)
+    /// Data collection uses this * DATA_REFRESH_MULTIPLIER
+    pub refresh_ms: u64,
+    
+    /// Timestamp of last interval change (for visual feedback)
+    pub last_change: Option<Instant>,
+}
+
+impl RefreshConfig {
+    /// Create a new RefreshConfig with default values
+    pub fn new() -> Self {
+        Self {
+            refresh_ms: 100,
+            last_change: None,
+        }
+    }
+    
+    /// Get UI refresh interval as Duration
+    pub fn ui_interval(&self) -> Duration {
+        Duration::from_millis(self.refresh_ms)
+    }
+    
+    /// Get data refresh interval as Duration (10x UI interval)
+    pub fn data_interval(&self) -> Duration {
+        Duration::from_millis(self.refresh_ms * DATA_REFRESH_MULTIPLIER)
+    }
+}
+
+impl Default for RefreshConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Main application state
 pub struct AppState {
@@ -74,6 +123,9 @@ pub struct AppState {
 
     /// Currently selected connection index (Active Connections list)
     pub selected_connection: Option<usize>,
+
+    /// Refresh interval configuration
+    pub refresh_config: RefreshConfig,
 }
 
 impl AppState {
@@ -97,6 +149,7 @@ impl AppState {
             graveyard_mode: GraveyardMode::default(),
             selected_process_pid: None,
             selected_connection: None,
+            refresh_config: RefreshConfig::new(),
         }
     }
 
@@ -127,9 +180,9 @@ impl AppState {
             self.zombie_blink = !self.zombie_blink;
         }
 
-        // Refresh connections every 1 second
+        // Refresh connections based on dynamic data refresh interval
         let elapsed_conn = now.duration_since(self.last_conn_refresh);
-        if elapsed_conn >= CONN_REFRESH_INTERVAL {
+        if elapsed_conn >= self.refresh_config.data_interval() {
             self.refresh_connections();
         }
     }
@@ -278,6 +331,20 @@ impl AppState {
                 self.clear_process_focus();
             }
         }
+    }
+
+    /// Increase refresh rate (decrease interval by 50ms, clamp to 50ms minimum)
+    pub fn increase_refresh_rate(&mut self) {
+        let new_interval = self.refresh_config.refresh_ms.saturating_sub(REFRESH_STEP);
+        self.refresh_config.refresh_ms = new_interval.max(MIN_REFRESH_MS);
+        self.refresh_config.last_change = Some(Instant::now());
+    }
+
+    /// Decrease refresh rate (increase interval by 50ms, clamp to 1000ms maximum)
+    pub fn decrease_refresh_rate(&mut self) {
+        let new_interval = self.refresh_config.refresh_ms.saturating_add(REFRESH_STEP);
+        self.refresh_config.refresh_ms = new_interval.min(MAX_REFRESH_MS);
+        self.refresh_config.last_change = Some(Instant::now());
     }
 }
 

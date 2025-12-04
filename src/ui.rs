@@ -31,6 +31,51 @@ fn interpolate_color(color1: (u8, u8, u8), color2: (u8, u8, u8), ratio: f32) -> 
     Color::Rgb(r, g, b)
 }
 
+/// Get color for refresh interval based on its value relative to default
+/// 
+/// Color coding:
+/// - Green (TOXIC_GREEN): Default value (normal performance impact)
+/// - Yellow (PUMPKIN_ORANGE): High frequency (increased performance impact)
+/// - Red (BLOOD_RED): Very high frequency (significant performance impact)
+/// 
+/// If recently_changed is true, returns a brighter version of the color
+fn get_refresh_color(interval_ms: u64, default_ms: u64, recently_changed: bool) -> Color {
+    let base_color = if interval_ms == default_ms {
+        // Default value - green
+        TOXIC_GREEN
+    } else if interval_ms < default_ms {
+        // Faster than default (higher frequency)
+        let ratio = (default_ms - interval_ms) as f32 / default_ms as f32;
+        
+        if ratio > 0.5 {
+            // Very high frequency - red
+            BLOOD_RED
+        } else {
+            // High frequency - yellow/orange
+            PUMPKIN_ORANGE
+        }
+    } else {
+        // Slower than default - also use green (lower resource usage)
+        TOXIC_GREEN
+    };
+
+    // If recently changed, make the color brighter
+    if recently_changed {
+        match base_color {
+            Color::Rgb(r, g, b) => {
+                // Increase brightness by 20%
+                let r = ((r as f32 * 1.2).min(255.0)) as u8;
+                let g = ((g as f32 * 1.2).min(255.0)) as u8;
+                let b = ((b as f32 * 1.2).min(255.0)) as u8;
+                Color::Rgb(r, g, b)
+            }
+            _ => base_color,
+        }
+    } else {
+        base_color
+    }
+}
+
 /// Main UI drawing function
 pub fn draw(f: &mut Frame, app: &AppState) {
     let size = f.area();
@@ -375,11 +420,26 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
     let inspector_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(10), // Top info
+            Constraint::Length(11), // Top info with refresh rate
             Constraint::Length(5),  // Sparkline
             Constraint::Min(0),     // Socket list
         ])
         .split(area);
+
+    // Check if refresh interval was recently changed (within CHANGE_HIGHLIGHT_DURATION)
+    let recently_changed = app.refresh_config.last_change
+        .map(|last| last.elapsed() < crate::app::CHANGE_HIGHLIGHT_DURATION)
+        .unwrap_or(false);
+
+    // Get color for refresh interval based on its value
+    let refresh_color = get_refresh_color(app.refresh_config.refresh_ms, 100, recently_changed);
+
+    // Apply highlight style if recently changed
+    let refresh_style = if recently_changed {
+        Style::default().fg(refresh_color).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    } else {
+        Style::default().fg(refresh_color)
+    };
 
     // Top section with process info
     let top_content = vec![
@@ -410,6 +470,14 @@ fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
                 Style::default()
                     .fg(TOXIC_GREEN)
                     .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("  ⚡ Refresh: "),
+            Span::styled(
+                format!("{}ms", app.refresh_config.refresh_ms),
+                refresh_style,
             ),
         ]),
     ];
@@ -586,33 +654,64 @@ fn render_grimoire(f: &mut Frame, area: Rect, app: &AppState) {
 fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
     use crate::app::GraveyardMode;
     
-    // Determine mode-specific hint text (Requirements 7.1, 7.2)
+    // Determine mode-specific hint text
     let mode_hint = match app.graveyard_mode {
-        GraveyardMode::Host => "P:Focus Process",
-        GraveyardMode::Process => "P:Back to Host",
+        GraveyardMode::Host => "Focus Process | ",
+        GraveyardMode::Process => "Back to Host | ",
     };
     
-    let status_text = Line::from(vec![
-        Span::styled(" 💀 ", Style::default().fg(Color::Rgb(138, 43, 226))),
-        Span::styled("F1:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-        Span::raw("Help | "),
-        Span::styled("⇆ TAB:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-        Span::raw("Switch Pane | "),
-        Span::styled("P:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-        Span::raw(mode_hint),
-        Span::raw(" | "),
-        Span::styled("↑↓:", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-        Span::raw("Navigate | "),
-        Span::styled("Q:", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-        Span::raw("R.I.P "),
-    ]);
+    // Calculate available width for hints (subtract borders and icon)
+    let available_width = area.width.saturating_sub(4); // Account for borders and padding
+    
+    // Define all hints with priority levels (lower number = higher priority)
+    // Priority 1: Essential shortcuts (Q, P, arrow keys)
+    // Priority 2: Important shortcuts (TAB, refresh controls)
+    // Priority 3: Nice-to-have (F1)
+    struct Hint {
+        priority: u8,
+        key: &'static str,
+        desc: String,
+        color: Color,
+    }
+    
+    let hints = vec![
+        Hint { priority: 1, key: "Q:", desc: "R.I.P ".to_string(), color: Color::Red },
+        Hint { priority: 1, key: "↑↓:", desc: "Navigate | ".to_string(), color: NEON_PURPLE },
+        Hint { priority: 1, key: "P:", desc: mode_hint.to_string(), color: NEON_PURPLE },
+        Hint { priority: 2, key: "+/-:", desc: "Speed | ".to_string(), color: NEON_PURPLE },
+        Hint { priority: 2, key: "⇆ TAB:", desc: "Switch Pane | ".to_string(), color: NEON_PURPLE },
+        Hint { priority: 3, key: "F1:", desc: "Help | ".to_string(), color: NEON_PURPLE },
+    ];
+    
+    // Build status text, adding hints until we run out of space
+    let mut spans = vec![
+        Span::styled(" 💀 ", Style::default().fg(NEON_PURPLE)),
+    ];
+    
+    let mut current_length = 4; // Icon + space
+    
+    // Process hints by priority
+    for priority in 1..=3 {
+        for hint in &hints {
+            if hint.priority == priority {
+                let hint_length = hint.key.len() + hint.desc.len();
+                if current_length + hint_length <= available_width as usize {
+                    spans.push(Span::styled(hint.key, Style::default().fg(hint.color).add_modifier(Modifier::BOLD)));
+                    spans.push(Span::raw(hint.desc.clone()));
+                    current_length += hint_length;
+                }
+            }
+        }
+    }
+    
+    let status_text = Line::from(spans);
 
     let status_bar = Paragraph::new(status_text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Double)
-                .border_style(Style::default().fg(Color::Rgb(138, 43, 226)))
+                .border_style(Style::default().fg(NEON_PURPLE))
         )
         .alignment(Alignment::Left);
 
