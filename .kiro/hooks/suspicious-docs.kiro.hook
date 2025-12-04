@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Suspicious detection documentation auto-update",
+  "description": "수상한 연결 감지 로직 변경 시, suspicious_detection.yaml과 README 설명을 자동으로 업데이트하는 훅",
+  "version": "1",
+  "when": {
+    "type": "fileEdit",
+    "patterns": [
+      "src/**/suspicious*.rs",
+      "src/**/detection*.rs",
+      "src/**/heuristic*.rs"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Suspicious connection detection logic files were modified. Read the updated code and summarize the current heuristics and thresholds that classify a connection as suspicious. Then update .kiro/specs/suspicious_detection.yaml to describe these rules in structured form (including: detection criteria such as state/port/duration/bytes, brief description in Korean, severity level, and optional examples). Also refresh the 'Detection rules' section in the main README.md (or create one if missing) in clear Korean so that operators can understand what is considered suspicious and why."
+  }
+}

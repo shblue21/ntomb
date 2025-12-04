@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Sync spec tasks with requirements/design",
+  "description": "스펙의 requirements.md / design.md 변경 시 tasks.md를 자동으로 정리하는 훅",
+  "version": "1",
+  "when": {
+    "type": "fileEdit",
+    "patterns": [
+      ".kiro/specs/**/requirements.md",
+      ".kiro/specs/**/design.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The spec file was edited. For the spec directory that changed, review requirements.md, design.md, and tasks.md together. Ensure every requirement has at least one corresponding task, split tasks into small implementation-ready items, mark already implemented ones with [x], and keep TODOs as [ ]. Remove or merge duplicate tasks. Update tasks.md following the existing style. Format example:\n\n- [ ] parser: /proc/net/tcp에서 TCP 연결 파싱\n- [ ] renderer: 중앙 프로세스 + 주변 노드 렌더링\n- [x] CLI 플래그 파서 구현"
+  }
+}
