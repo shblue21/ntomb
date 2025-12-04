@@ -13,7 +13,11 @@
         "explain_connection",
         "get_detection_rules",
         "compare_baseline",
-        "suggest_investigation"
+        "suggest_investigation",
+        "get_network_map_schema",
+        "validate_rule_coverage",
+        "suggest_new_rule",
+        "analyze_spec_consistency"
       ]
     }
   }

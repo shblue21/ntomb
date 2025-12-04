@@ -594,5 +594,396 @@ def _generate_process_summary_ko(process_info: dict, analyses: list, tags: set) 
            f"감지된 태그: {', '.join(tags)}"
 
 
+# =============================================================================
+# Development Assistant Tools (ntomb-dev-assistant)
+# =============================================================================
+
+@mcp.tool()
+def get_network_map_schema() -> dict:
+    """Get the network_map.yaml schema for ntomb development.
+    
+    Returns the complete schema definition including node types, edge types,
+    connection states, and layout rules. Useful for generating Rust structs
+    or understanding the data model.
+    
+    Returns:
+        Schema definition with node_types, edge_types, connection_states, and layout rules.
+    """
+    import yaml
+    
+    yaml_path = None
+    search_paths = [
+        Path(".kiro/specs/network_map.yaml"),
+        Path("../.kiro/specs/network_map.yaml"),
+        Path(__file__).parent.parent / ".kiro/specs/network_map.yaml",
+    ]
+    
+    for path in search_paths:
+        if path.exists():
+            yaml_path = path
+            break
+    
+    if yaml_path is None or not yaml_path.exists():
+        return {
+            "found": False,
+            "message": "network_map.yaml을 찾을 수 없습니다.",
+        }
+    
+    with open(yaml_path, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    
+    # Generate Rust struct suggestions
+    rust_structs = _generate_rust_structs_from_schema(data)
+    
+    return {
+        "found": True,
+        "schema": data,
+        "rust_struct_suggestions": rust_structs,
+        "summary": {
+            "node_types": list(data.get("node_types", {}).keys()),
+            "edge_types": list(data.get("edge_types", {}).keys()),
+            "connection_states": list(data.get("connection_states", {}).keys()),
+            "views": list(data.get("views", {}).keys()),
+        },
+    }
+
+
+def _generate_rust_structs_from_schema(schema: dict) -> list[str]:
+    """Generate Rust struct suggestions from network_map schema."""
+    structs = []
+    
+    # Generate node type structs
+    for node_name, node_def in schema.get("node_types", {}).items():
+        fields = node_def.get("fields", [])
+        struct_name = "".join(word.capitalize() for word in node_name.split("_"))
+        
+        rust_fields = []
+        for field in fields:
+            field_name = field.get("name", "unknown")
+            field_type = _yaml_type_to_rust(field.get("type", "string"), field.get("required", True))
+            rust_fields.append(f"    pub {field_name}: {field_type},")
+        
+        struct_code = f"""#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct {struct_name} {{
+{chr(10).join(rust_fields)}
+}}"""
+        structs.append(struct_code)
+    
+    return structs
+
+
+def _yaml_type_to_rust(yaml_type: str, required: bool) -> str:
+    """Convert YAML type to Rust type."""
+    type_map = {
+        "u32": "u32",
+        "u16": "u16",
+        "u64": "u64",
+        "usize": "usize",
+        "string": "String",
+        "bool": "bool",
+        "list<string>": "Vec<String>",
+    }
+    
+    rust_type = type_map.get(yaml_type, "String")
+    
+    if not required:
+        return f"Option<{rust_type}>"
+    return rust_type
+
+
+@mcp.tool()
+def validate_rule_coverage() -> dict:
+    """Validate that detection rules are properly covered in code.
+    
+    Checks if each rule in suspicious_detection.yaml has corresponding
+    implementation hints and identifies potential gaps.
+    
+    Returns:
+        Coverage report with implemented rules, missing implementations, and suggestions.
+    """
+    config = get_detection_config()
+    
+    # Rules that have Korean explanations (considered "documented")
+    from .detection_rules import RULE_EXPLANATIONS_KO
+    
+    documented_rules = set(RULE_EXPLANATIONS_KO.keys())
+    all_rules = {rule.id for rule in config.rules}
+    
+    # Check coverage
+    covered = all_rules & documented_rules
+    undocumented = all_rules - documented_rules
+    
+    # Analyze rule complexity
+    rule_analysis = []
+    for rule in config.rules:
+        complexity = "simple"
+        match_criteria = rule.match
+        
+        if len(match_criteria) > 3:
+            complexity = "complex"
+        elif any(k.endswith("_gte") or k.endswith("_lte") for k in match_criteria):
+            complexity = "medium"
+        
+        rule_analysis.append({
+            "id": rule.id,
+            "name": rule.name,
+            "severity": rule.severity,
+            "complexity": complexity,
+            "match_criteria_count": len(match_criteria),
+            "has_korean_explanation": rule.id in documented_rules,
+            "tags": rule.tags,
+        })
+    
+    # Generate suggestions for undocumented rules
+    suggestions = []
+    for rule_id in undocumented:
+        rule = next((r for r in config.rules if r.id == rule_id), None)
+        if rule:
+            suggestions.append({
+                "rule_id": rule_id,
+                "suggestion": f"RULE_EXPLANATIONS_KO에 '{rule_id}' 설명 추가 필요",
+                "template": f'"{rule_id}": "{rule.name}: [한국어 설명 작성]",',
+            })
+    
+    return {
+        "summary": {
+            "total_rules": len(all_rules),
+            "documented_rules": len(covered),
+            "undocumented_rules": len(undocumented),
+            "coverage_percent": round(len(covered) / len(all_rules) * 100, 1) if all_rules else 0,
+        },
+        "rules": rule_analysis,
+        "undocumented": list(undocumented),
+        "suggestions": suggestions,
+        "recommendation_ko": _generate_coverage_recommendation_ko(covered, undocumented),
+    }
+
+
+def _generate_coverage_recommendation_ko(covered: set, undocumented: set) -> str:
+    """Generate Korean recommendation for rule coverage."""
+    if not undocumented:
+        return "✅ 모든 규칙이 문서화되어 있습니다."
+    
+    return f"⚠️ {len(undocumented)}개 규칙에 한국어 설명이 없습니다.\n" \
+           f"detection_rules.py의 RULE_EXPLANATIONS_KO에 추가해주세요:\n" \
+           f"- {', '.join(list(undocumented)[:5])}" + \
+           (f" 외 {len(undocumented) - 5}개" if len(undocumented) > 5 else "")
+
+
+@mcp.tool()
+def suggest_new_rule(
+    pattern_description: str,
+    observed_connections: Optional[list[dict]] = None
+) -> dict:
+    """Suggest a new detection rule based on observed patterns.
+    
+    Analyzes the description and optional connection data to generate
+    a new rule definition in suspicious_detection.yaml format.
+    
+    Args:
+        pattern_description: Description of the suspicious pattern in Korean or English
+        observed_connections: Optional list of example connections that exhibit the pattern
+    
+    Returns:
+        Suggested rule definition with YAML format and implementation hints.
+    """
+    # Analyze pattern description for keywords
+    keywords = {
+        "beacon": ["beacon", "비콘", "주기적", "periodic", "interval"],
+        "exfiltration": ["exfil", "유출", "대용량", "large", "transfer"],
+        "backdoor": ["backdoor", "백도어", "listener", "리스너", "bind"],
+        "scanning": ["scan", "스캔", "probe", "탐색"],
+        "c2": ["c2", "command", "control", "명령"],
+        "anomaly": ["unusual", "이상", "unexpected", "비정상"],
+    }
+    
+    detected_tags = []
+    pattern_lower = pattern_description.lower()
+    for tag, words in keywords.items():
+        if any(word in pattern_lower for word in words):
+            detected_tags.append(tag)
+    
+    if not detected_tags:
+        detected_tags = ["anomaly"]
+    
+    # Determine severity based on tags
+    severity = "medium"
+    if "c2" in detected_tags or "exfiltration" in detected_tags:
+        severity = "high"
+    elif "backdoor" in detected_tags:
+        severity = "high"
+    elif "scanning" in detected_tags:
+        severity = "medium"
+    
+    # Generate rule ID
+    import re
+    rule_id = re.sub(r'[^a-z0-9]+', '_', pattern_description.lower()[:30]).strip('_')
+    
+    # Analyze observed connections if provided
+    match_criteria = {}
+    if observed_connections:
+        states = set(c.get("state", "").upper() for c in observed_connections if c.get("state"))
+        if states:
+            if len(states) == 1:
+                match_criteria["state"] = list(states)[0]
+            else:
+                match_criteria["state_in"] = list(states)
+        
+        remote_ports = [c.get("remote_port", 0) for c in observed_connections if c.get("remote_port")]
+        if remote_ports:
+            min_port = min(remote_ports)
+            if min_port > 49152:
+                match_criteria["remote_port_gte"] = 49152
+            elif min_port > 1024:
+                match_criteria["remote_port_gte"] = 1024
+    
+    # Generate YAML suggestion
+    yaml_suggestion = f"""  - id: {rule_id}
+    name: "{pattern_description[:50]}"
+    description: |
+      {pattern_description}
+      [자동 생성된 규칙 - 검토 후 수정 필요]
+    severity: {severity}
+    tags:
+{chr(10).join(f'      - {tag}' for tag in detected_tags)}
+    match:
+{chr(10).join(f'      {k}: {v}' for k, v in match_criteria.items()) if match_criteria else '      # TODO: 매칭 조건 추가'}
+    effects:
+      add_tag:
+{chr(10).join(f'        - {tag}' for tag in detected_tags)}
+      highlight_style: {"red_glow" if severity == "high" else "orange_glow" if severity == "medium" else "yellow_glow"}
+      icon_hint: {"skull" if severity == "high" else "ghost"}"""
+    
+    # Generate Korean explanation template
+    ko_explanation = f'"{rule_id}": "{pattern_description[:30]}...: [상세 설명 작성]",'
+    
+    return {
+        "suggested_rule": {
+            "id": rule_id,
+            "name": pattern_description[:50],
+            "severity": severity,
+            "tags": detected_tags,
+            "match_criteria": match_criteria,
+        },
+        "yaml_format": yaml_suggestion,
+        "korean_explanation_template": ko_explanation,
+        "implementation_hints": [
+            f"1. suspicious_detection.yaml의 rules 섹션에 위 YAML 추가",
+            f"2. detection_rules.py의 RULE_EXPLANATIONS_KO에 한국어 설명 추가",
+            f"3. 필요시 matches_connection() 메서드에 새 매칭 로직 추가",
+        ],
+        "recommendation_ko": f"💡 '{pattern_description[:30]}...' 패턴에 대한 규칙을 생성했습니다.\n"
+                            f"심각도: {severity}, 태그: {', '.join(detected_tags)}\n"
+                            f"위 YAML을 suspicious_detection.yaml에 추가하고 검토해주세요.",
+    }
+
+
+@mcp.tool()
+def analyze_spec_consistency() -> dict:
+    """Analyze consistency between ntomb specs and implementation.
+    
+    Checks if the specs (requirements, design, detection rules) are
+    consistent with each other and identifies potential gaps.
+    
+    Returns:
+        Consistency report with findings and recommendations.
+    """
+    import yaml
+    
+    findings = []
+    
+    # Load detection rules
+    config = get_detection_config()
+    detection_rule_ids = {rule.id for rule in config.rules}
+    detection_tags = set()
+    for rule in config.rules:
+        detection_tags.update(rule.tags)
+    
+    # Load network_map.yaml
+    network_map_path = None
+    for path in [Path(".kiro/specs/network_map.yaml"), Path("../.kiro/specs/network_map.yaml")]:
+        if path.exists():
+            network_map_path = path
+            break
+    
+    network_map_states = set()
+    if network_map_path:
+        with open(network_map_path, 'r', encoding='utf-8') as f:
+            network_map = yaml.safe_load(f)
+            network_map_states = set(network_map.get("connection_states", {}).keys())
+    
+    # Check: Detection rules reference valid connection states
+    for rule in config.rules:
+        match = rule.match
+        if "state" in match:
+            state = match["state"].upper()
+            if state not in network_map_states and network_map_states:
+                findings.append({
+                    "type": "invalid_state_reference",
+                    "severity": "warning",
+                    "rule_id": rule.id,
+                    "message": f"규칙 '{rule.id}'이 network_map.yaml에 없는 상태 '{state}'를 참조합니다.",
+                })
+        
+        if "state_in" in match:
+            for state in match["state_in"]:
+                if state.upper() not in network_map_states and network_map_states:
+                    findings.append({
+                        "type": "invalid_state_reference",
+                        "severity": "warning",
+                        "rule_id": rule.id,
+                        "message": f"규칙 '{rule.id}'이 network_map.yaml에 없는 상태 '{state}'를 참조합니다.",
+                    })
+    
+    # Check: All severity levels are valid
+    valid_severities = {"low", "medium", "high", "critical"}
+    for rule in config.rules:
+        if rule.severity not in valid_severities:
+            findings.append({
+                "type": "invalid_severity",
+                "severity": "error",
+                "rule_id": rule.id,
+                "message": f"규칙 '{rule.id}'의 심각도 '{rule.severity}'가 유효하지 않습니다.",
+            })
+    
+    # Summary
+    error_count = sum(1 for f in findings if f["severity"] == "error")
+    warning_count = sum(1 for f in findings if f["severity"] == "warning")
+    
+    return {
+        "summary": {
+            "total_findings": len(findings),
+            "errors": error_count,
+            "warnings": warning_count,
+            "detection_rules_count": len(detection_rule_ids),
+            "connection_states_count": len(network_map_states),
+            "unique_tags_count": len(detection_tags),
+        },
+        "findings": findings,
+        "specs_analyzed": [
+            "suspicious_detection.yaml",
+            "network_map.yaml" if network_map_path else "(not found)",
+        ],
+        "recommendation_ko": _generate_consistency_recommendation_ko(findings),
+    }
+
+
+def _generate_consistency_recommendation_ko(findings: list) -> str:
+    """Generate Korean recommendation for spec consistency."""
+    if not findings:
+        return "✅ 스펙 간 일관성 문제가 발견되지 않았습니다."
+    
+    errors = [f for f in findings if f["severity"] == "error"]
+    warnings = [f for f in findings if f["severity"] == "warning"]
+    
+    parts = []
+    if errors:
+        parts.append(f"🔴 오류 {len(errors)}개: 즉시 수정 필요")
+    if warnings:
+        parts.append(f"🟡 경고 {len(warnings)}개: 검토 권장")
+    
+    return "\n".join(parts)
+
+
 if __name__ == "__main__":
     mcp.run()
