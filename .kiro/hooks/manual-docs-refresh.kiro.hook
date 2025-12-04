@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Manually refresh detection docs",
+  "description": "버튼 클릭 시 suspicious_detection.yaml과 README를 수동으로 최신화",
+  "version": "1",
+  "when": {
+    "type": "manual"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Scan all detection-related code in src/ (suspicious*.rs, detection*.rs, heuristic*.rs, net/*.rs). Summarize the current heuristics and thresholds. Update .kiro/specs/suspicious_detection.yaml with structured rules and refresh the 'Detection rules' section in README.md in clear Korean."
+  }
+}
