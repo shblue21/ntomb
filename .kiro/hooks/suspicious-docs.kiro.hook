@@ -8,7 +8,8 @@
     "patterns": [
       "src/**/suspicious*.rs",
       "src/**/detection*.rs",
-      "src/**/heuristic*.rs"
+      "src/**/heuristic*.rs",
+      "src/net/*.rs"
     ]
   },
   "then": {
