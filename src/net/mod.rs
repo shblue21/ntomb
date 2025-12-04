@@ -8,7 +8,7 @@ use netstat2::{
 use std::io;
 
 /// TCP connection states
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConnectionState {
     Established,
     SynSent,

@@ -1,13 +1,19 @@
 // UI rendering module
 
 use crate::app::AppState;
+use crate::net::ConnectionState;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    symbols::Marker,
     text::{Line, Span},
-    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph, Sparkline},
+    widgets::{
+        canvas::{Canvas, Line as CanvasLine},
+        Block, Borders, BorderType, List, ListItem, Paragraph, Sparkline,
+    },
     Frame,
 };
+use std::collections::HashMap;
 
 // Color constants from ntomb-visual-design.md
 const NEON_PURPLE: Color = Color::Rgb(187, 154, 247);
@@ -104,144 +110,207 @@ fn render_banner(f: &mut Frame, area: Rect) {
     f.render_widget(banner, area);
 }
 
+/// Endpoint node for canvas rendering
+struct EndpointNode {
+    label: String,
+    x: f64,
+    y: f64,
+    state: ConnectionState,
+    conn_count: usize,
+}
+
 fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
-    // Calculate pulsing neon color based on pulse_phase
+    // Split: summary line + canvas
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .split(area);
+
+    // Collect endpoint data
+    let mut endpoints_map: HashMap<String, Vec<&crate::net::Connection>> = HashMap::new();
+    let mut listen_count = 0;
+
+    for conn in &app.connections {
+        if conn.state == ConnectionState::Listen {
+            listen_count += 1;
+        } else if conn.remote_addr != "0.0.0.0" {
+            endpoints_map
+                .entry(conn.remote_addr.clone())
+                .or_default()
+                .push(conn);
+        }
+    }
+
+    let endpoint_count = endpoints_map.len();
+
+    // Summary line
+    let summary = Paragraph::new(Line::from(vec![
+        Span::styled(" 📊 ", Style::default().fg(NEON_PURPLE)),
+        Span::styled(
+            format!(
+                "Endpoints: {} | Listening: {} | Total: {}",
+                endpoint_count, listen_count, app.connections.len()
+            ),
+            Style::default().fg(BONE_WHITE),
+        ),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(NEON_PURPLE))
+            .title(vec![
+                Span::styled(
+                    "━ 🕸️ The Graveyard (Network Topology) ━",
+                    Style::default()
+                        .fg(NEON_PURPLE)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+    );
+    f.render_widget(summary, chunks[0]);
+
+    // Prepare endpoint nodes with radial layout
+    let mut sorted_endpoints: Vec<_> = endpoints_map.iter().collect();
+    sorted_endpoints.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    let max_nodes = 12;
+    let nodes: Vec<EndpointNode> = sorted_endpoints
+        .iter()
+        .take(max_nodes)
+        .enumerate()
+        .map(|(i, (addr, conns))| {
+            // Calculate radial position
+            let angle = (i as f64 / max_nodes as f64) * 2.0 * std::f64::consts::PI - std::f64::consts::PI / 2.0;
+            let radius = 35.0;
+            let x = 50.0 + radius * angle.cos();
+            let y = 50.0 + radius * angle.sin();
+
+            // Determine dominant state
+            let state = conns
+                .iter()
+                .fold(HashMap::new(), |mut acc: HashMap<ConnectionState, usize>, c| {
+                    *acc.entry(c.state).or_insert(0) += 1;
+                    acc
+                })
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(state, _)| state)
+                .unwrap_or(ConnectionState::Unknown);
+
+            // Shorten label
+            let label = if addr.len() > 15 {
+                format!("{}...", &addr[..12])
+            } else {
+                addr.to_string()
+            };
+
+            EndpointNode {
+                label,
+                x,
+                y,
+                state,
+                conn_count: conns.len(),
+            }
+        })
+        .collect();
+
+    // Pulsing color for animation
     let pulse_color = interpolate_color((138, 43, 226), (187, 154, 247), app.pulse_phase);
 
-    // Zombie color based on blink state
-    let zombie_color = if app.zombie_blink {
-        BLOOD_RED
-    } else {
-        Color::Rgb(100, 60, 70) // Faded red
-    };
-    let map_content = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("          "),
-            Span::styled("(☁️ AWS-Cloud-LB)", Style::default().fg(Color::Cyan)),
-        ]),
-        Line::from("                │"),
-        Line::from(vec![
-            Span::raw("                │ "),
-            Span::styled("⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄", Style::default().fg(pulse_color)),
-            Span::styled(" <SSL/443>", Style::default().fg(pulse_color)),
-            Span::styled(" (🟣 Pulsing)", Style::default().fg(Color::Gray)),
-        ]),
-        Line::from(vec![
-            Span::raw("                ▼   "),
-            Span::styled("⠱⡀", Style::default().fg(pulse_color)),
-            Span::styled("   12ms      ⠑⢄", Style::default().fg(TOXIC_GREEN)),
-        ]),
-        Line::from(vec![
-            Span::raw("                     "),
-            Span::styled("⠱⡀", Style::default().fg(pulse_color)),
-            Span::raw("              ⠑⢄       "),
-            Span::styled("[🧟 zombie-proc]", Style::default().fg(zombie_color)),
-        ]),
-        Line::from(vec![
-            Span::raw("                      "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("               ▼          "),
-            Span::styled("<TCP/???>", Style::default().fg(Color::Red)),
-        ]),
-        Line::from(vec![
-            Span::raw("                      "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("   "),
-            Span::styled("╭─────────────╮", Style::default().fg(Color::Rgb(255, 140, 0))),
-            Span::raw("        "),
-            Span::styled("⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤", Style::default().fg(Color::Red)),
-        ]),
-        Line::from(vec![
-            Span::styled("      <TCP/80>", Style::default().fg(Color::Green)),
-            Span::raw("        "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("  "),
-            Span::styled("│ ⚰️ MAIN_APP │", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
-            Span::raw("        :  "),
-            Span::styled("⚠️", Style::default().fg(Color::Red)),
-            Span::styled(" (🔴 Dotted/Flash)", Style::default().fg(Color::Gray)),
-        ]),
-        Line::from(vec![
-            Span::styled("      [nginx-gw]", Style::default().fg(Color::Green)),
-            Span::raw(" ⠀⠀⠀ ⠈⠒⠚⠁"),
-            Span::styled("│  (PID 1337) │", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
-            Span::styled("◀⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒", Style::default().fg(Color::Red)),
-        ]),
-        Line::from(vec![
-            Span::styled("         🎃", Style::default().fg(Color::Rgb(255, 165, 0))),
-            Span::raw("           "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("  "),
-            Span::styled("╰─────────────╯", Style::default().fg(Color::Rgb(255, 140, 0))),
-            Span::raw("        :   WAIT_CLOSE"),
-        ]),
-        Line::from(vec![
-            Span::raw("        ╱ "),
-            Span::styled("(🟢)", Style::default().fg(Color::Green)),
-            Span::raw("          "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("       │                :"),
-        ]),
-        Line::from(vec![
-            Span::raw("       ╱                "),
-            Span::styled("⢣", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("      │ "),
-            Span::styled("<TCP/5432>", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("     "),
-            Span::styled("⠑⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤", Style::default().fg(Color::Rgb(138, 43, 226))),
-        ]),
-        Line::from(vec![
-            Span::raw("      ╱ "),
-            Span::styled("(🟠 High Lat)", Style::default().fg(Color::Rgb(255, 140, 0))),
-            Span::raw("    "),
-            Span::styled("⠱⡀", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("   │ "),
-            Span::styled("(🟣 Solid Neon)", Style::default().fg(Color::Gray)),
-        ]),
-        Line::from(vec![
-            Span::raw("     ▼ "),
-            Span::styled("450ms", Style::default().fg(Color::Yellow)),
-            Span::raw("             "),
-            Span::styled("⠱⡀", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw("  ▼"),
-        ]),
-        Line::from(vec![
-            Span::styled("  [💳 auth-svc]", Style::default().fg(Color::Cyan)),
-            Span::raw("             "),
-            Span::styled("⠱", Style::default().fg(Color::Rgb(138, 43, 226))),
-            Span::raw(" "),
-            Span::styled("[🪦 postgres-db]", Style::default().fg(Color::Blue)),
-        ]),
-        Line::from(vec![
-            Span::raw("                              "),
-            Span::styled("(Tombstone)", Style::default().fg(Color::Gray)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("   * RENDER NOTE:", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
-            Span::styled(" Curves (`⡠⠤⢄`) are drawn using Ratatui Canvas Braille", Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![
-            Span::styled("     resolution (2x4 pixels per cell) for smooth, organic visuals.", Style::default().fg(Color::DarkGray)),
-        ]),
-    ];
-
-    let network_map = Paragraph::new(map_content)
+    // Canvas with Braille markers
+    let canvas = Canvas::default()
         .block(
             Block::default()
-                .title(vec![
-                    Span::styled("━ 🕸️ The Graveyard (Network Topology) ━", Style::default().fg(Color::Rgb(138, 43, 226)).add_modifier(Modifier::BOLD)),
-                    Span::styled("[🔍 Zoom: 120% | 📍 Offset: (45, 22)]", Style::default().fg(Color::Gray)),
-                    Span::styled("━━━━", Style::default().fg(Color::Rgb(138, 43, 226))),
-                ])
-                .borders(Borders::ALL)
+                .borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Rgb(138, 43, 226)))
+                .border_style(Style::default().fg(NEON_PURPLE)),
         )
-        .alignment(Alignment::Left);
+        .marker(Marker::Braille)
+        .x_bounds([0.0, 100.0])
+        .y_bounds([0.0, 100.0])
+        .paint(move |ctx| {
+            let cx = 50.0;
+            let cy = 50.0;
 
-    f.render_widget(network_map, area);
+            // Draw connection lines first (behind nodes)
+            for node in &nodes {
+                let line_color = match node.state {
+                    ConnectionState::Established => TOXIC_GREEN,
+                    ConnectionState::TimeWait | ConnectionState::CloseWait => PUMPKIN_ORANGE,
+                    ConnectionState::SynSent | ConnectionState::SynRecv => Color::Yellow,
+                    ConnectionState::Close => BLOOD_RED,
+                    _ => pulse_color,
+                };
+
+                ctx.draw(&CanvasLine {
+                    x1: cx,
+                    y1: cy,
+                    x2: node.x,
+                    y2: node.y,
+                    color: line_color,
+                });
+            }
+
+            // Draw central host node
+            ctx.print(cx - 5.0, cy + 2.0, Span::styled("⚰️ HOST", Style::default().fg(PUMPKIN_ORANGE).add_modifier(Modifier::BOLD)));
+
+            // Draw endpoint nodes
+            for node in &nodes {
+                let icon = match node.state {
+                    ConnectionState::Established => "🎃",
+                    ConnectionState::TimeWait => "👻",
+                    ConnectionState::CloseWait => "💀",
+                    ConnectionState::SynSent => "⏳",
+                    ConnectionState::Listen => "👂",
+                    _ => "🌐",
+                };
+
+                let color = match node.state {
+                    ConnectionState::Established => TOXIC_GREEN,
+                    ConnectionState::TimeWait | ConnectionState::CloseWait => PUMPKIN_ORANGE,
+                    ConnectionState::Close => BLOOD_RED,
+                    _ => BONE_WHITE,
+                };
+
+                // Node icon
+                ctx.print(node.x, node.y, Span::styled(icon, Style::default().fg(color)));
+
+                // Node label (shortened)
+                let label = format!("{} ({})", node.label, node.conn_count);
+                ctx.print(
+                    node.x - 6.0,
+                    node.y - 4.0,
+                    Span::styled(label, Style::default().fg(color)),
+                );
+            }
+
+            // Show message if no connections
+            if nodes.is_empty() && app.connections.is_empty() {
+                ctx.print(
+                    cx - 12.0,
+                    cy,
+                    Span::styled(
+                        "The graveyard is quiet...",
+                        Style::default().fg(BONE_WHITE).add_modifier(Modifier::ITALIC),
+                    ),
+                );
+            }
+
+            // Show "more" indicator
+            if sorted_endpoints.len() > max_nodes {
+                ctx.print(
+                    cx - 8.0,
+                    10.0,
+                    Span::styled(
+                        format!("+{} more", sorted_endpoints.len() - max_nodes),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                );
+            }
+        });
+
+    f.render_widget(canvas, chunks[1]);
 }
 
 fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
