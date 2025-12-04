@@ -58,6 +58,7 @@ pub struct Connection {
     pub remote_addr: String,
     pub remote_port: u16,
     pub state: ConnectionState,
+    #[allow(dead_code)]
     pub inode: Option<u64>,
     /// Process ID that owns this connection (populated by procfs on Linux)
     pub pid: Option<i32>,
@@ -75,10 +76,7 @@ pub fn collect_connections() -> io::Result<Vec<Connection>> {
     let sockets = get_sockets_info(af_flags, proto_flags).map_err(|e| {
         // Gracefully handle errors
         // Following security-domain: calm, informative tone
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Cannot retrieve network sockets: {}", e),
-        )
+        io::Error::other(format!("Cannot retrieve network sockets: {}", e))
     })?;
 
     let mut connections = Vec::new();
@@ -236,7 +234,7 @@ mod tests {
             Ok(conns) => {
                 println!("Found {} connections", conns.len());
                 // Should have at least some connections on a typical system
-                assert!(conns.len() >= 0);
+                assert!(!conns.is_empty());
             }
             Err(e) => {
                 // On some systems this might fail due to permissions
