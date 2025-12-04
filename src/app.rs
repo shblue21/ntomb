@@ -305,10 +305,9 @@ impl AppState {
     pub fn focus_process_of_selected_connection(&mut self) {
         if let Some(conn_idx) = self.selected_connection {
             if let Some(conn) = self.connections.get(conn_idx) {
-                if let Some(pid) = conn.pid {
-                    self.graveyard_mode = GraveyardMode::Process;
-                    self.selected_process_pid = Some(pid);
-                }
+                // Switch to Process mode even if PID is unknown (macOS)
+                self.graveyard_mode = GraveyardMode::Process;
+                self.selected_process_pid = conn.pid;
             }
         }
     }
