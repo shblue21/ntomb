@@ -317,31 +317,38 @@ pub fn particle_position(
     (x, y)
 }
 
+/// Minimum canvas height (in canvas units) to use the large coffin design
+/// Below this threshold, the mini coffin (single line) is used
+const LARGE_COFFIN_MIN_HEIGHT: f64 = 50.0;
+
 /// Draw the coffin block on the canvas at the HOST center
 /// 
-/// Renders a simple, clean coffin representation that doesn't interfere
-/// with the Braille network visualization. Uses a compact single-line
-/// format to avoid overlap with network edges.
+/// Renders a hexagonal coffin shape for the central HOST node.
+/// Automatically switches to mini (single-line) mode when canvas is small.
 /// 
-/// Display format:
+/// Large coffin (4 lines):
 /// ```text
-/// ╔═══════════════╗
-/// ║  ⚰ HOST_NAME  ║
-/// ╚═══════════════╝
+///    ╱‾‾‾‾‾‾‾‾‾‾‾‾╲
+///   ╱  ⚰ HOST_NAME ╲
+///   ╲              ╱
+///    ╲____________╱
+/// ```
+/// 
+/// Mini coffin (1 line, for small screens):
+/// ```text
+/// ⚰ HOST_NAME
 /// ```
 /// 
 /// # Arguments
 /// * `ctx` - The canvas context for drawing
 /// * `host_name` - The name to display (e.g., "HOST", "kafka-broker-1")
 /// * `overdrive_enabled` - When true, uses Pumpkin Orange for a "burning" effect
-/// 
-/// # Wide Character Note
-/// The ⚰ emoji may render as 2 characters wide in some terminals.
-/// The box is sized to accommodate this.
+/// * `canvas_height` - Height of the canvas in canvas units (used to determine coffin size)
 pub fn draw_coffin_block(
     ctx: &mut ratatui::widgets::canvas::Context<'_>,
     host_name: &str,
     overdrive_enabled: bool,
+    canvas_height: f64,
 ) {
     let (cx, cy) = HOST_CENTER;
     
@@ -359,50 +366,83 @@ pub fn draw_coffin_block(
         host_name.to_string()
     };
     
-    // Build the coffin box (3 lines)
-    // Calculate box width based on content: "  ⚰ " + name + "  "
-    // ⚰ emoji is ~2 chars wide, so total inner width = 4 + name_len + 2
-    let inner_width = 6 + display_name.len();
-    let border_char = "═";
-    let top_border = format!("╔{}╗", border_char.repeat(inner_width));
-    let content = format!("║  ⚰ {}  ║", display_name);
-    let bottom_border = format!("╚{}╝", border_char.repeat(inner_width));
+    // Choose coffin size based on canvas height
+    if canvas_height >= LARGE_COFFIN_MIN_HEIGHT {
+        draw_large_coffin(ctx, cx, cy, &display_name, coffin_color);
+    } else {
+        draw_mini_coffin(ctx, cx, cy, &display_name, coffin_color);
+    }
+}
+
+/// Draw the large hexagonal coffin (4 lines)
+/// ```text
+///    ╱‾‾‾‾‾‾‾‾‾‾‾‾╲
+///   ╱  ⚰ HOST_NAME ╲
+///   ╲              ╱
+///    ╲____________╱
+/// ```
+fn draw_large_coffin(
+    ctx: &mut ratatui::widgets::canvas::Context<'_>,
+    cx: f64,
+    cy: f64,
+    display_name: &str,
+    coffin_color: Color,
+) {
+    // Calculate widths based on name length
+    // Inner content: "  ⚰ " + name + " " = 5 + name_len
+    let content_width = 5 + display_name.len();
+    let top_bar_width = content_width.saturating_sub(2); // Slightly narrower top
+    let bottom_bar_width = content_width; // Full width bottom
     
-    // Calculate character width for centering
-    // Each character is approximately 1.2 canvas units wide
-    let char_width = 1.2;
-    let box_width = top_border.chars().count() as f64 * char_width;
-    let x = cx - box_width / 2.0;
+    // Build coffin lines
+    let line1 = format!("  ╱{}╲", "‾".repeat(top_bar_width));
+    let line2 = format!(" ╱  ⚰ {} ╲", display_name);
+    let line3 = format!(" ╲{}╱", " ".repeat(content_width));
+    let line4 = format!("  ╲{}╱", "_".repeat(bottom_bar_width));
     
-    // Vertical spacing between lines (canvas units)
+    // Calculate centering
+    let cell_width = 0.8;
+    let max_line_width = line2.chars().count() as f64 * cell_width;
+    let base_x = cx - max_line_width / 2.0;
+    
+    // Vertical spacing between lines
     let line_spacing = 3.5;
+    let start_y = cy + line_spacing * 1.5;
     
-    // Draw top border
-    ctx.print(
-        x,
-        cy + line_spacing,
-        Span::styled(
-            top_border,
-            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
-        ),
-    );
+    let style = Style::default().fg(coffin_color).add_modifier(Modifier::BOLD);
     
-    // Draw content line with coffin emoji and host name
+    // Draw all 4 lines
+    ctx.print(base_x + cell_width, start_y, Span::styled(line1, style));
+    ctx.print(base_x, start_y - line_spacing, Span::styled(line2, style));
+    ctx.print(base_x, start_y - line_spacing * 2.0, Span::styled(line3, style));
+    ctx.print(base_x + cell_width, start_y - line_spacing * 3.0, Span::styled(line4, style));
+}
+
+/// Draw the mini coffin (single line for small screens)
+/// ```text
+/// ⚰ HOST_NAME
+/// ```
+fn draw_mini_coffin(
+    ctx: &mut ratatui::widgets::canvas::Context<'_>,
+    cx: f64,
+    cy: f64,
+    display_name: &str,
+    coffin_color: Color,
+) {
+    let content = format!("⚰ {}", display_name);
+    
+    // Calculate centering
+    // ⚰ emoji is 2 cells wide, rest are 1 cell each
+    let display_width = 2 + 1 + display_name.len(); // emoji + space + name
+    let cell_width = 0.8;
+    let content_width = display_width as f64 * cell_width;
+    let x = cx - content_width / 2.0;
+    
     ctx.print(
         x,
         cy,
         Span::styled(
             content,
-            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
-        ),
-    );
-    
-    // Draw bottom border
-    ctx.print(
-        x,
-        cy - line_spacing,
-        Span::styled(
-            bottom_border,
             Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
         ),
     );
@@ -1069,6 +1109,10 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     // Capture overdrive setting for themed icon rendering (Requirements 4.2, 4.3, 4.4)
     let overdrive_enabled = app.graveyard_settings.overdrive_enabled;
+    
+    // Capture canvas height for responsive coffin sizing
+    // Use terminal rows as proxy for canvas height (each row ~= 2 canvas units)
+    let canvas_height = (chunks[1].height as f64) * 2.0;
 
     // Canvas with Braille markers
     let canvas = Canvas::default()
@@ -1095,6 +1139,11 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
 
             // Draw connection lines first (behind nodes)
             // Requirements 2.4, 2.5: Draw base line + particles if animations enabled
+            
+            // Coffin exclusion zone radius - lines start from outside this radius
+            // to avoid overlapping with the central coffin block
+            let coffin_radius = 8.0;
+            
             for node in &nodes {
                 let line_color = match node.state {
                     ConnectionState::Established => TOXIC_GREEN,
@@ -1104,13 +1153,27 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     _ => pulse_color,
                 };
 
+                // Calculate direction vector from center to endpoint
+                let dx = node.x - cx;
+                let dy = node.y - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+                
+                // Calculate line start point at coffin boundary (outside exclusion zone)
+                // This prevents lines from overlapping with the coffin block
+                let (start_x, start_y) = if dist > coffin_radius {
+                    let ratio = coffin_radius / dist;
+                    (cx + dx * ratio, cy + dy * ratio)
+                } else {
+                    (cx, cy) // Fallback for very close endpoints
+                };
+
                 // Draw base edge line (always visible for graceful degradation)
                 // Requirements 2.5, 2.6, 5.4: When animations are disabled, static connection
                 // lines remain visible with state-based colors, ensuring no visual information
                 // is lost and full readability is maintained.
                 ctx.draw(&CanvasLine {
-                    x1: cx,
-                    y1: cy,
+                    x1: start_x,
+                    y1: start_y,
                     x2: node.x,
                     y2: node.y,
                     color: line_color,
@@ -1156,10 +1219,10 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                         &PARTICLE_OFFSETS
                     };
                     
-                    // Draw particles along the edge
+                    // Draw particles along the edge (starting from coffin boundary)
                     for &offset in particle_offsets {
                         let (px, py) = particle_position(
-                            (cx, cy),
+                            (start_x, start_y),
                             (node.x, node.y),
                             pulse_phase,
                             offset,
@@ -1177,7 +1240,8 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             // The coffin provides a decorative focal point that enhances the necromancer theme
             // In overdrive mode, the coffin appears in Pumpkin Orange ("burning" effect)
             // The host name is displayed as part of the coffin block (Requirement 5.1)
-            draw_coffin_block(ctx, &center_label, overdrive_enabled);
+            // Uses large hexagonal coffin for big screens, mini coffin for small screens
+            draw_coffin_block(ctx, &center_label, overdrive_enabled, canvas_height);
 
             // Draw endpoint nodes with type-specific icons and colors (Requirements 3.1, 3.2, 3.3, 3.4, 3.5)
             // When overdrive is enabled, use themed icons (Requirements 4.2, 4.3, 4.4)
