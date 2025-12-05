@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 pub const MIN_REFRESH_MS: u64 = 50;
 
 /// Maximum refresh interval in milliseconds
-pub const MAX_REFRESH_MS: u64 = 1000;
+pub const MAX_REFRESH_MS: u64 = 10000;
 
 /// Refresh interval adjustment step in milliseconds
 pub const REFRESH_STEP: u64 = 50;
@@ -134,7 +134,7 @@ impl RefreshConfig {
     /// Create a new RefreshConfig with default values
     pub fn new() -> Self {
         Self {
-            refresh_ms: 100,
+            refresh_ms: 500,
             last_change: None,
         }
     }
