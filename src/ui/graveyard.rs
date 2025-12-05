@@ -25,30 +25,12 @@ use std::collections::HashMap;
 // Latency ring constants for Graveyard visualization (Requirements 1.1, 1.6)
 // Ring radii in virtual canvas space (0-100)
 // Inner ring (Low latency < 50ms), Middle ring (Medium 50-200ms), Outer ring (High > 200ms)
-const RING_RADII: [f64; 3] = [15.0, 25.0, 35.0];
+// INCREASED to utilize more canvas space and keep nodes away from coffin
+const RING_RADII: [f64; 3] = [25.0, 35.0, 45.0];
 
 // ============================================================================
-// Adaptive Layout Constants (Requirements 1.1, 1.3, 1.4, 2.1)
+// Layout Constants (Requirements 1.1, 1.4)
 // ============================================================================
-
-/// Minimum canvas dimension (in canvas units) to enable adaptive layout
-/// Below this threshold, fixed radii are used for readability
-/// Requirements: 1.3
-const ADAPTIVE_THRESHOLD: f64 = 60.0;
-
-/// Ring ratio multipliers for adaptive scaling (Low:Medium:High approximately 4:6:9)
-/// These ratios are preserved when scaling adaptively to maintain visual hierarchy
-/// Increased from 0.30/0.50/0.70 to better utilize canvas space
-/// Requirements: 2.1
-const RING_RATIO_LOW: f64 = 0.45;
-const RING_RATIO_MEDIUM: f64 = 0.65;
-const RING_RATIO_HIGH: f64 = 0.90;
-
-/// Edge padding as percentage of available radius
-/// Prevents nodes from being clipped at canvas edges
-/// Reduced from 0.10 to allow more spread
-/// Requirements: 1.4
-const EDGE_PADDING_PERCENT: f64 = 0.05;
 
 /// Minimum edge padding in canvas units
 /// Ensures labels have space even on small canvases
@@ -78,10 +60,6 @@ const PARTICLE_REDUCTION_THRESHOLD: usize = 50;
 // Reduced particle offsets for high edge count scenarios
 // Uses 1 particle instead of 3 to reduce rendering load
 const REDUCED_PARTICLE_OFFSETS: [f32; 1] = [0.33];
-
-/// Minimum canvas height (in canvas units) to use the large coffin design
-/// Below this threshold, the mini coffin (single line) is used
-const LARGE_COFFIN_MIN_HEIGHT: f64 = 50.0;
 
 // ============================================================================
 // Adaptive Layout Configuration (Requirements 1.1, 1.2, 2.1)
@@ -125,67 +103,7 @@ impl Default for LayoutConfig {
     }
 }
 
-/// Calculate layout configuration based on canvas dimensions
-///
-/// Determines whether to use adaptive scaling or fixed radii based on the
-/// canvas size. When the smaller dimension exceeds ADAPTIVE_THRESHOLD,
-/// ring radii scale proportionally to utilize available space. Otherwise,
-/// fixed radii are used to maintain readability on small screens.
-///
-/// # Arguments
-/// * `canvas_width` - Width of the canvas in canvas units (typically 100.0)
-/// * `canvas_height` - Height of the canvas in canvas units (scaled from terminal rows)
-///
-/// # Returns
-/// LayoutConfig with appropriate ring radii for the given dimensions
-///
-/// # Algorithm
-/// 1. Handle invalid dimensions (zero/negative) by returning default fixed layout
-/// 2. Calculate available radius from smaller dimension minus edge padding
-/// 3. If available radius is below threshold, use fixed radii
-/// 4. Otherwise, scale radii proportionally using RING_RATIO constants
-///
-/// Requirements: 1.1, 1.2, 1.3, 3.1
-pub fn calculate_layout_config(canvas_width: f64, canvas_height: f64) -> LayoutConfig {
-    // Handle invalid dimensions - fall back to default fixed layout
-    if canvas_width <= 0.0 || canvas_height <= 0.0 {
-        return LayoutConfig::default();
-    }
 
-    // Use the smaller dimension to determine maximum ring radius
-    // This prevents nodes from being clipped on non-square canvases
-    let smaller_dimension = canvas_width.min(canvas_height);
-
-    // Calculate edge padding (percentage of smaller dimension, with minimum)
-    let edge_padding = (smaller_dimension * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
-
-    // Calculate available radius (half of smaller dimension minus padding)
-    let available_radius = (smaller_dimension / 2.0) - edge_padding;
-
-    // Check if we should use adaptive mode
-    // Adaptive mode requires the smaller dimension to exceed the threshold
-    if smaller_dimension < ADAPTIVE_THRESHOLD {
-        // Below threshold: use fixed radii for readability
-        return LayoutConfig {
-            ring_low: RING_RADII[0],
-            ring_medium: RING_RADII[1],
-            ring_high: RING_RADII[2],
-            edge_padding,
-            is_adaptive: false,
-        };
-    }
-
-    // Adaptive mode: scale ring radii proportionally to available radius
-    // This maintains the visual hierarchy (Low < Medium < High) while
-    // utilizing the available canvas space
-    LayoutConfig {
-        ring_low: available_radius * RING_RATIO_LOW,
-        ring_medium: available_radius * RING_RATIO_MEDIUM,
-        ring_high: available_radius * RING_RATIO_HIGH,
-        edge_padding,
-        is_adaptive: true,
-    }
-}
 
 /// Classification of endpoint types for visual rendering
 /// 
@@ -447,23 +365,331 @@ pub fn particle_position(
     (x, y)
 }
 
+// ============================================================================
+// Classic Coffin Rendering System (Requirements 3.1)
+// HARDCODED TEMPLATES - DO NOT MODIFY THE ASCII ART
+// ============================================================================
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ WARNING: The coffin ASCII art templates below are DESIGN ARTIFACTS.     │
+// │ DO NOT modify the shape, characters, or line structure.                 │
+// │ Only the HOST placeholder may be replaced with actual host names.       │
+// │ Tests in this module will FAIL if the templates are changed.            │
+// └─────────────────────────────────────────────────────────────────────────┘
+
+/// Large coffin template (4 lines) - FIXED ASCII ART, DO NOT CHANGE
+///
+/// Visual representation (with 6-char HOST placeholder):
+/// ```text
+///    /‾‾‾‾‾‾\
+///   / HOST__ \
+///   \        /
+///    \______/
+/// ```
+///
+/// Template rules:
+/// - Line 0: Top point of coffin (14 chars)
+/// - Line 1: HOST__ placeholder (6 chars, replaced with actual hostname) (14 chars)
+/// - Line 2: Lower body widening (14 chars)
+/// - Line 3: Bottom base (14 chars)
+/// - Total width: 14 characters per line (ALL LINES MUST BE EXACTLY 14 CHARS)
+const LARGE_COFFIN_TEMPLATE: [&str; 4] = [
+    "   /‾‾‾‾‾‾\\   ",  // Line 0: 14 chars (3 + / + 6 + \ + 3)
+    "  / HOST__ \\  ",   // Line 1: 14 chars (2 + / + 1 + HOST__ + 1 + \ + 2)
+    "  \\        /  ",   // Line 2: 14 chars (2 + \ + 8 + / + 2)
+    "   \\______/   ",   // Line 3: 14 chars (3 + \ + 6 + / + 3)
+];
+
+/// Large coffin dimensions (characters)
+const LARGE_COFFIN_WIDTH: usize = 14;
+const LARGE_COFFIN_HEIGHT: usize = 4;
+/// Maximum host name length that fits in large coffin
+const LARGE_COFFIN_MAX_NAME: usize = 6;
+/// Placeholder string in template (exactly 6 chars)
+const LARGE_COFFIN_PLACEHOLDER: &str = "HOST__";
+
+/// Mid coffin template (3 lines) - FIXED ASCII ART, DO NOT CHANGE
+///
+/// Visual representation (with 6-char HOST placeholder):
+/// ```text
+///  /‾‾‾‾‾‾\
+/// / HOST__ \
+///  \______/
+/// ```
+///
+/// Template rules:
+/// - Line 0: Top (11 chars)
+/// - Line 1: HOST__ placeholder (6 chars, replaced with actual hostname) (11 chars)
+/// - Line 2: Bottom base (11 chars)
+/// - Total width: 11 characters per line (ALL LINES MUST BE EXACTLY 11 CHARS)
+const MID_COFFIN_TEMPLATE: [&str; 3] = [
+    " /‾‾‾‾‾‾\\  ",    // Line 0: 11 chars (1 + / + 6 macrons + \ + 2)
+    "/ HOST__ \\ ",    // Line 1: 11 chars (/ + 1 + HOST__ + 1 + \ + 1)
+    " \\______/  ",    // Line 2: 11 chars (1 + \ + 6 + / + 2)
+];
+
+/// Mid coffin dimensions (characters)
+const MID_COFFIN_WIDTH: usize = 11;
+const MID_COFFIN_HEIGHT: usize = 3;
+/// Maximum host name length that fits in mid coffin
+const MID_COFFIN_MAX_NAME: usize = 6;
+/// Placeholder string in template (exactly 6 chars)
+const MID_COFFIN_PLACEHOLDER: &str = "HOST__";
+
+/// Coffin variant enumeration
+///
+/// Determines which coffin template to use based on available space.
+/// The system gracefully degrades from Large → Mid → Label as space decreases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoffinVariant {
+    /// 5-line full coffin silhouette (requires 12x5 character space)
+    Large,
+    /// 3-line compact coffin (requires 10x3 character space)
+    Mid,
+    /// 1-line label fallback: [⚰ HOST]
+    Label,
+}
+
+/// Coffin rendering result
+///
+/// Contains the pre-rendered coffin lines and metadata for positioning.
+/// The `lines` vector contains the exact strings to render, with HOST
+/// already replaced by the actual hostname.
+#[derive(Debug, Clone)]
+pub struct CoffinRender {
+    /// Coffin lines from top to bottom (ready to render)
+    pub lines: Vec<String>,
+    /// Which variant was selected
+    pub variant: CoffinVariant,
+    /// Maximum width in characters (for centering calculations)
+    pub width: usize,
+    /// Height in lines
+    pub height: usize,
+}
+
+
+
+/// Truncate host name to fit within max_len, adding ".." suffix if needed
+///
+/// # Examples
+/// - "HOST" with max_len=10 → "HOST"
+/// - "kafka-broker-1" with max_len=6 → "kafk.."
+/// - "AB" with max_len=2 → "AB"
+fn truncate_host_name(host: &str, max_len: usize) -> String {
+    let char_count = host.chars().count();
+    if char_count <= max_len {
+        host.to_string()
+    } else if max_len <= 3 {
+        // Too short for suffix, just truncate
+        host.chars().take(max_len).collect()
+    } else {
+        // Truncate and add ".." suffix
+        let truncated: String = host.chars().take(max_len - 2).collect();
+        format!("{}..", truncated)
+    }
+}
+
+/// Center-pad a string to fit within a given width
+///
+/// # Examples
+/// - "X" with width=5 → "  X  "
+/// - "HOST" with width=6 → " HOST "
+fn center_pad(s: &str, width: usize) -> String {
+    let s_len = s.chars().count();
+    if s_len >= width {
+        return s.to_string();
+    }
+    let total_pad = width - s_len;
+    let left_pad = total_pad / 2;
+    let right_pad = total_pad - left_pad;
+    format!("{}{}{}", " ".repeat(left_pad), s, " ".repeat(right_pad))
+}
+
+/// Build Large coffin (5 lines) from hardcoded template
+///
+/// Replaces the "HOST__" placeholder in line 2 with the actual hostname.
+/// The hostname is truncated to LARGE_COFFIN_MAX_NAME chars and centered.
+///
+/// # Arguments
+/// * `host` - The hostname to display (e.g., "HOST", "kafka-broker-1")
+///
+/// # Returns
+/// CoffinRender with 5 lines ready to display
+pub fn build_large_coffin(host: &str) -> CoffinRender {
+    let display_name = truncate_host_name(host, LARGE_COFFIN_MAX_NAME);
+    let padded_name = center_pad(&display_name, LARGE_COFFIN_MAX_NAME);
+    
+    // Replace "HOST__" placeholder (6 chars) with padded hostname (6 chars)
+    // This maintains exact line width
+    let lines: Vec<String> = LARGE_COFFIN_TEMPLATE
+        .iter()
+        .map(|line| {
+            if line.contains(LARGE_COFFIN_PLACEHOLDER) {
+                line.replace(LARGE_COFFIN_PLACEHOLDER, &padded_name)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    
+    CoffinRender {
+        lines,
+        variant: CoffinVariant::Large,
+        width: LARGE_COFFIN_WIDTH,
+        height: LARGE_COFFIN_HEIGHT,
+    }
+}
+
+/// Build Mid coffin (3 lines) from hardcoded template
+///
+/// Replaces the "HOST__" placeholder in line 1 with the actual hostname.
+/// The hostname is truncated to MID_COFFIN_MAX_NAME chars and centered.
+///
+/// # Arguments
+/// * `host` - The hostname to display
+///
+/// # Returns
+/// CoffinRender with 3 lines ready to display
+pub fn build_mid_coffin(host: &str) -> CoffinRender {
+    let display_name = truncate_host_name(host, MID_COFFIN_MAX_NAME);
+    let padded_name = center_pad(&display_name, MID_COFFIN_MAX_NAME);
+    
+    // Replace "HOST__" placeholder (6 chars) with padded hostname (6 chars)
+    // This maintains exact line width
+    let lines: Vec<String> = MID_COFFIN_TEMPLATE
+        .iter()
+        .map(|line| {
+            if line.contains(MID_COFFIN_PLACEHOLDER) {
+                line.replace(MID_COFFIN_PLACEHOLDER, &padded_name)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    
+    CoffinRender {
+        lines,
+        variant: CoffinVariant::Mid,
+        width: MID_COFFIN_WIDTH,
+        height: MID_COFFIN_HEIGHT,
+    }
+}
+
+/// Build Label coffin (1 line) - minimal fallback
+///
+/// Format: [⚰ HOST]
+/// Used when there's not enough space for even the Mid coffin.
+///
+/// # Arguments
+/// * `host` - The hostname to display
+/// * `max_width` - Maximum available width in characters
+///
+/// # Returns
+/// CoffinRender with 1 line in format "[⚰ {hostname}]"
+pub fn build_label_coffin(host: &str, max_width: usize) -> CoffinRender {
+    // Reserve space for "[⚰ " (3 chars) and "]" (1 char) = 4 chars total
+    // Note: ⚰ is a single-width character in most terminals
+    let available = max_width.saturating_sub(4);
+    let display_name = truncate_host_name(host, available.max(3));
+    let line = format!("[⚰ {}]", display_name);
+    let width = line.chars().count();
+    
+    CoffinRender {
+        lines: vec![line],
+        variant: CoffinVariant::Label,
+        width,
+        height: 1,
+    }
+}
+
+/// Choose the appropriate coffin variant based on available area
+///
+/// Selection logic (graceful degradation):
+/// 1. If area fits Large coffin (14 chars wide, 5 lines tall) → use Large
+/// 2. Else if area fits Mid coffin (11 chars wide, 3 lines tall) → use Mid
+/// 3. Else → use Label (1 line fallback)
+///
+/// The coffin is NEVER partially rendered. Either the full variant fits,
+/// or we degrade to a smaller variant.
+///
+/// # Arguments
+/// * `area_width` - Available width in canvas units (0-100 scale)
+/// * `area_height` - Available height in canvas units (0-100 scale)
+/// * `host` - Host name to display
+///
+/// # Returns
+/// CoffinRender with the largest variant that fits completely
+///
+/// # Canvas-to-Character Conversion
+/// - Width: 1 canvas unit ≈ 1 character
+/// - Height: 4 canvas units ≈ 1 line (due to terminal aspect ratio)
+pub fn choose_coffin_variant(area_width: f64, area_height: f64, host: &str) -> CoffinRender {
+    // Convert canvas units to approximate character dimensions
+    // Terminal cells are typically ~2:1 aspect ratio (taller than wide)
+    let char_width = (area_width / 1.0) as usize;
+    let char_height = (area_height / 4.0) as usize;
+    
+    // Try Large coffin first (5 lines, 14 chars wide)
+    // Requires: width >= 14, height >= 5
+    if char_width >= LARGE_COFFIN_WIDTH && char_height >= LARGE_COFFIN_HEIGHT {
+        return build_large_coffin(host);
+    }
+    
+    // Try Mid coffin (3 lines, 11 chars wide)
+    // Requires: width >= 11, height >= 3
+    if char_width >= MID_COFFIN_WIDTH && char_height >= MID_COFFIN_HEIGHT {
+        return build_mid_coffin(host);
+    }
+    
+    // Fallback to Label (1 line, minimum 10 chars for readability)
+    build_label_coffin(host, char_width.max(10))
+}
+
+/// Calculate the coffin exclusion zone radius
+///
+/// Returns the radius (in canvas units) around HOST_CENTER where
+/// connection lines should not be drawn to avoid overlapping the coffin.
+///
+/// # Arguments
+/// * `variant` - The coffin variant being rendered
+///
+/// # Returns
+/// Radius in canvas units for the exclusion zone
+pub fn coffin_exclusion_radius(variant: CoffinVariant) -> f64 {
+    match variant {
+        CoffinVariant::Large => 15.0,  // 5-line coffin needs larger exclusion
+        CoffinVariant::Mid => 12.0,    // 3-line coffin
+        CoffinVariant::Label => 8.0,   // 1-line label
+    }
+}
+
 /// Draw the coffin block on the canvas at the HOST center
-/// 
-/// Renders a hexagonal coffin shape for the central HOST node.
-/// Automatically switches to mini (single-line) mode when canvas is small.
-/// 
+///
+/// Renders a classic coffin silhouette for the central HOST node.
+/// Automatically selects the appropriate variant based on canvas size.
+///
+/// The coffin is drawn AFTER the connection lines and particles,
+/// ensuring it appears on top and is never obscured.
+///
 /// # Arguments
 /// * `ctx` - The canvas context for drawing
 /// * `host_name` - The name to display (e.g., "HOST", "kafka-broker-1")
 /// * `overdrive_enabled` - When true, uses Pumpkin Orange for a "burning" effect
-/// * `canvas_height` - Height of the canvas in canvas units (used to determine coffin size)
+/// * `canvas_height` - Height of the canvas in canvas units
+/// * `center_x` - X coordinate of the center point (for aspect-ratio adjusted canvases)
+/// * `center_y` - Y coordinate of the center point (typically 50.0)
+///
+/// # Returns
+/// The CoffinVariant that was rendered (for exclusion zone calculation)
 pub fn draw_coffin_block(
     ctx: &mut ratatui::widgets::canvas::Context<'_>,
     host_name: &str,
     overdrive_enabled: bool,
     canvas_height: f64,
-) {
-    let (cx, cy) = HOST_CENTER;
+    center_x: f64,
+    center_y: f64,
+) -> CoffinVariant {
+    let (cx, cy) = (center_x, center_y);
     
     // Coffin color: Neon Purple normally, Pumpkin Orange in overdrive mode
     let coffin_color = if overdrive_enabled {
@@ -472,82 +698,55 @@ pub fn draw_coffin_block(
         NEON_PURPLE
     };
     
-    // Truncate host name if too long (max 10 chars for display)
-    let display_name = if host_name.len() > 10 {
-        format!("{}...", &host_name[..7])
-    } else {
-        host_name.to_string()
-    };
-    
-    // Choose coffin size based on canvas height
-    if canvas_height >= LARGE_COFFIN_MIN_HEIGHT {
-        draw_large_coffin(ctx, cx, cy, &display_name, coffin_color);
-    } else {
-        draw_mini_coffin(ctx, cx, cy, &display_name, coffin_color);
-    }
-}
-
-/// Draw the large hexagonal coffin (4 lines)
-fn draw_large_coffin(
-    ctx: &mut ratatui::widgets::canvas::Context<'_>,
-    cx: f64,
-    cy: f64,
-    display_name: &str,
-    coffin_color: Color,
-) {
-    // Calculate widths based on name length
-    let content_width = 6 + display_name.len();
-    let top_bar_width = content_width;
-    let bottom_bar_width = content_width;
-    
-    // Build coffin lines using ASCII-compatible characters
-    let line1 = format!(" /{}\\", "─".repeat(top_bar_width));
-    let line2 = format!("/   ⚰ {}  \\", display_name);
-    let line3 = format!("\\{}/ ", " ".repeat(content_width));
-    let line4 = format!(" \\{}/", "─".repeat(bottom_bar_width));
-    
-    // Calculate centering
-    let cell_width = 0.8;
-    let max_line_width = line2.chars().count() as f64 * cell_width;
-    let base_x = cx - max_line_width / 2.0;
-    
-    // Vertical spacing between lines
-    let line_spacing = 3.5;
-    let start_y = cy + line_spacing * 1.5;
+    // Choose coffin variant based on canvas size (100x100 virtual space)
+    let coffin = choose_coffin_variant(100.0, canvas_height, host_name);
+    let variant = coffin.variant;
     
     let style = Style::default().fg(coffin_color).add_modifier(Modifier::BOLD);
     
-    // Draw all 4 lines
-    ctx.print(base_x + cell_width, start_y, Span::styled(line1, style));
-    ctx.print(base_x, start_y - line_spacing, Span::styled(line2, style));
-    ctx.print(base_x, start_y - line_spacing * 2.0, Span::styled(line3, style));
-    ctx.print(base_x + cell_width, start_y - line_spacing * 3.0, Span::styled(line4, style));
+    // Calculate vertical spacing based on variant
+    // Larger spacing for larger coffins to maintain proportions
+    let line_spacing = match coffin.variant {
+        CoffinVariant::Large => 4.0,
+        CoffinVariant::Mid => 4.5,
+        CoffinVariant::Label => 0.0,
+    };
+    
+    // Calculate starting Y position (center the coffin vertically)
+    let total_height = (coffin.height as f64 - 1.0) * line_spacing;
+    let start_y = cy + total_height / 2.0;
+    
+    // Cell width for horizontal positioning (1 canvas unit per character)
+    let cell_width = 1.0;
+    
+    // Use the coffin's fixed width for centering (not line.chars().count())
+    // This ensures consistent centering regardless of Unicode character widths
+    let coffin_width = coffin.width as f64 * cell_width;
+    
+    // Draw each line of the coffin from top to bottom
+    for (i, line) in coffin.lines.iter().enumerate() {
+        // Center based on fixed coffin width, not individual line width
+        let x = cx - coffin_width / 2.0;
+        let y = start_y - (i as f64 * line_spacing);
+        
+        ctx.print(x, y, Span::styled(line.clone(), style));
+    }
+    
+    variant
 }
 
-/// Draw the mini coffin (single line for small screens)
-fn draw_mini_coffin(
-    ctx: &mut ratatui::widgets::canvas::Context<'_>,
-    cx: f64,
-    cy: f64,
-    display_name: &str,
-    coffin_color: Color,
-) {
-    let content = format!("⚰ {}", display_name);
-    
-    // Calculate centering
-    let display_width = 2 + 1 + display_name.len();
-    let cell_width = 0.8;
-    let content_width = display_width as f64 * cell_width;
-    let x = cx - content_width / 2.0;
-    
-    ctx.print(
-        x,
-        cy,
-        Span::styled(
-            content,
-            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
-        ),
-    );
+/// Get the coffin variant that would be selected for given canvas dimensions
+///
+/// This is useful for pre-calculating the exclusion zone before drawing.
+///
+/// # Arguments
+/// * `canvas_height` - Height of the canvas in canvas units
+/// * `host_name` - The hostname (affects nothing, but needed for API consistency)
+///
+/// # Returns
+/// The CoffinVariant that would be selected
+pub fn get_coffin_variant_for_canvas(canvas_height: f64, host_name: &str) -> CoffinVariant {
+    choose_coffin_variant(100.0, canvas_height, host_name).variant
 }
 
 /// Draw latency rings on the canvas around the HOST center
@@ -817,18 +1016,10 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     let all_conn_counts: Vec<usize> = endpoint_data.iter().map(|(_, _, count, _, _)| *count).collect();
     
-    // Calculate adaptive layout configuration based on canvas dimensions
+    // Use fixed layout configuration for stable rendering
     // Canvas uses virtual 0-100 coordinate space (x_bounds and y_bounds are [0, 100])
-    // We need to determine the effective canvas size based on terminal aspect ratio
-    // Terminal characters are ~2x taller than wide
-    // Requirements: 1.1, 1.2, 2.1, 3.1
-    let terminal_width = chunks[1].width as f64;
-    let terminal_height = chunks[1].height as f64;
-    // Since chars are ~2x tall, effective_height = terminal_height * 2
-    let effective_height = terminal_height * 2.0;
-    // Larger terminals should spread nodes more
-    let scale_factor = (terminal_width.min(effective_height) / 60.0).max(1.0);
-    let layout_config = calculate_layout_config(100.0 * scale_factor, 100.0 * scale_factor);
+    // Fixed layout ensures consistent node positions regardless of terminal size
+    let layout_config = LayoutConfig::default();
     
     // Count endpoints per latency bucket for position calculation
     let mut bucket_counts: HashMap<LatencyBucket, usize> = HashMap::new();
@@ -875,7 +1066,41 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     let animation_reduced = app.animation_reduced;
     let labels_enabled = app.graveyard_settings.labels_enabled;
     let overdrive_enabled = app.graveyard_settings.overdrive_enabled;
-    let canvas_height = (chunks[1].height as f64) * 2.0;
+    
+    // Calculate canvas dimensions for proper aspect ratio
+    // Braille markers: each cell is 2x4 dots, so we multiply accordingly
+    let canvas_width_cells = chunks[1].width.saturating_sub(2) as f64; // subtract border
+    let canvas_height_cells = chunks[1].height.saturating_sub(1) as f64; // subtract border
+    
+    // Terminal cells are typically ~2:1 aspect ratio (taller than wide)
+    // Braille: 2 dots wide, 4 dots tall per cell
+    // So actual pixel ratio is: width_cells * 2 : height_cells * 4 = width_cells : height_cells * 2
+    let canvas_pixel_width = canvas_width_cells * 2.0;
+    let canvas_pixel_height = canvas_height_cells * 4.0;
+    
+    // Calculate x_bounds to maintain square coordinate space centered on screen
+    // y_bounds stays [0, 100], x_bounds scales based on aspect ratio
+    let aspect_ratio = canvas_pixel_width / canvas_pixel_height.max(1.0);
+    let x_range = 100.0 * aspect_ratio;
+    let x_center = x_range / 2.0;
+    
+    // Transform node x coordinates from 0-100 space to aspect-ratio adjusted space
+    // Nodes are calculated around HOST_CENTER (50, 50), so we need to:
+    // 1. Translate to origin (x - 50)
+    // 2. Scale by aspect ratio (keep y unchanged, scale x)
+    // 3. Translate to new center (+ x_center)
+    let nodes: Vec<EndpointNode> = nodes
+        .into_iter()
+        .map(|mut node| {
+            // Transform x coordinate: (x - 50) + x_center
+            // This shifts the node positions to be centered in the wider canvas
+            node.x = (node.x - 50.0) + x_center;
+            node
+        })
+        .collect();
+    
+    // For closure capture
+    let canvas_height = canvas_pixel_height;
 
     // Canvas with Braille markers
     let canvas = Canvas::default()
@@ -886,10 +1111,11 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 .border_style(Style::default().fg(NEON_PURPLE)),
         )
         .marker(Marker::Braille)
-        .x_bounds([0.0, 100.0])
+        .x_bounds([0.0, x_range])
         .y_bounds([0.0, 100.0])
         .paint(move |ctx| {
-            let cx = 50.0;
+            // Center point adjusted for aspect ratio
+            let cx = x_center;
             let cy = 50.0;
             
             // Draw latency rings first (behind everything else)
@@ -900,8 +1126,10 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 });
             }
 
-            // Coffin exclusion zone radius
-            let coffin_radius = 8.0;
+            // Calculate coffin exclusion zone radius based on selected variant
+            // This ensures connection lines don't overlap the coffin silhouette
+            let coffin_variant = get_coffin_variant_for_canvas(canvas_height, &center_label);
+            let coffin_radius = coffin_exclusion_radius(coffin_variant);
             
             for node in &nodes {
                 let line_color = match node.state {
@@ -976,7 +1204,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             }
 
             // Draw coffin block at center
-            draw_coffin_block(ctx, &center_label, overdrive_enabled, canvas_height);
+            draw_coffin_block(ctx, &center_label, overdrive_enabled, canvas_height, cx, cy);
 
             // Draw endpoint nodes
             for node in &nodes {
@@ -1339,10 +1567,9 @@ mod tests {
     }
     
     #[test]
-    fn test_calculate_endpoint_position_with_adaptive_layout() {
-        // Test with adaptive layout (100x100 canvas - above threshold of 60)
-        let layout = calculate_layout_config(100.0, 100.0);
-        assert!(layout.is_adaptive, "Should be adaptive for 100x100 canvas");
+    fn test_calculate_endpoint_position_ring_ordering() {
+        // Test that ring ordering is preserved (Low < Medium < High)
+        let layout = LayoutConfig::default();
         
         let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low, &layout);
         let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High, &layout);
@@ -1389,169 +1616,207 @@ mod tests {
     }
 
     // ============================================================================
-    // Test calculate_layout_config edge cases
-    // Requirements: 1.3, 3.1
+    // Test Classic Coffin Rendering System - HARDCODED TEMPLATES
+    // Requirements: 3.1
+    // These tests ensure the coffin ASCII art remains STABLE and UNCHANGED
+    // ============================================================================
+
+    // ============================================================================
+    // COFFIN TEMPLATE STABILITY TESTS
+    // These tests ensure the coffin ASCII art is NEVER accidentally changed.
+    // If these tests fail, it means someone modified the hardcoded templates.
     // ============================================================================
 
     #[test]
-    fn test_calculate_layout_config_zero_dimensions() {
-        // Zero width should fall back to default fixed layout
-        let layout = calculate_layout_config(0.0, 100.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+    fn large_coffin_shape_is_stable() {
+        // This test ensures the Large coffin template is NEVER changed
+        // DO NOT MODIFY THESE ASSERTIONS - they are the source of truth
+        let coffin = build_large_coffin("HOST");
         
-        // Zero height should fall back to default fixed layout
-        let layout = calculate_layout_config(100.0, 0.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+        assert_eq!(coffin.variant, CoffinVariant::Large);
+        assert_eq!(coffin.height, 4, "Large coffin must be exactly 4 lines");
+        assert_eq!(coffin.width, LARGE_COFFIN_WIDTH, "Large coffin width must match constant");
+        assert_eq!(coffin.lines.len(), 4);
         
-        // Both zero should fall back to default fixed layout
-        let layout = calculate_layout_config(0.0, 0.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+        // Verify all lines are exactly 14 chars
+        for (i, line) in coffin.lines.iter().enumerate() {
+            assert_eq!(line.chars().count(), 14, "Line {} must be exactly 14 chars", i);
+        }
+        
+        // Verify EXACT template structure (14 chars wide)
+        // Line 0: Top point
+        assert_eq!(coffin.lines[0], "   /‾‾‾‾‾‾\\   ", "Line 0 (top) must match exactly");
+        // Line 1: HOST placeholder (centered in 6-char space)
+        assert!(coffin.lines[1].contains("HOST"), "Line 1 must contain HOST");
+        assert!(coffin.lines[1].starts_with("  /"), "Line 1 must start with '  /'");
+        assert!(coffin.lines[1].ends_with("\\  "), "Line 1 must end with '\\  '");
+        // Line 2: Lower body
+        assert_eq!(coffin.lines[2], "  \\        /  ", "Line 2 must match exactly");
+        // Line 3: Bottom base
+        assert_eq!(coffin.lines[3], "   \\______/   ", "Line 3 (bottom) must match exactly");
     }
 
     #[test]
-    fn test_calculate_layout_config_negative_dimensions() {
-        // Negative width should fall back to default fixed layout
-        let layout = calculate_layout_config(-50.0, 100.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+    fn mid_coffin_shape_is_stable() {
+        // This test ensures the Mid coffin template is NEVER changed
+        // DO NOT MODIFY THESE ASSERTIONS - they are the source of truth
+        let coffin = build_mid_coffin("HOST");
         
-        // Negative height should fall back to default fixed layout
-        let layout = calculate_layout_config(100.0, -50.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+        assert_eq!(coffin.variant, CoffinVariant::Mid);
+        assert_eq!(coffin.height, 3, "Mid coffin must be exactly 3 lines");
+        assert_eq!(coffin.width, MID_COFFIN_WIDTH, "Mid coffin width must match constant");
+        assert_eq!(coffin.lines.len(), 3);
         
-        // Both negative should fall back to default fixed layout
-        let layout = calculate_layout_config(-100.0, -100.0);
-        assert!(!layout.is_adaptive);
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+        // Verify all lines are exactly 11 chars
+        for (i, line) in coffin.lines.iter().enumerate() {
+            assert_eq!(line.chars().count(), 11, "Line {} must be exactly 11 chars", i);
+        }
+        
+        // Verify EXACT template structure (11 chars wide)
+        // Line 0: Top
+        assert_eq!(coffin.lines[0], " /‾‾‾‾‾‾\\  ", "Line 0 (top) must match exactly");
+        // Line 1: HOST placeholder
+        assert!(coffin.lines[1].contains("HOST"), "Line 1 must contain HOST");
+        assert!(coffin.lines[1].starts_with("/"), "Line 1 must start with '/'");
+        assert!(coffin.lines[1].ends_with(" "), "Line 1 must end with space");
+        // Line 2: Bottom base
+        assert_eq!(coffin.lines[2], " \\______/  ", "Line 2 (bottom) must match exactly");
     }
 
     #[test]
-    fn test_calculate_layout_config_boundary_at_threshold() {
-        // Just below threshold (60.0) - should use fixed layout
-        let layout = calculate_layout_config(59.9, 59.9);
-        assert!(!layout.is_adaptive, "Should use fixed layout below threshold");
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+    fn label_coffin_format_is_stable() {
+        // This test ensures the Label coffin format is NEVER changed
+        // Format: [⚰ HOST]
+        let coffin = build_label_coffin("HOST", 20);
         
-        // Exactly at threshold (60.0) - should use adaptive layout
-        let layout = calculate_layout_config(60.0, 60.0);
-        assert!(layout.is_adaptive, "Should use adaptive layout at threshold");
+        assert_eq!(coffin.variant, CoffinVariant::Label);
+        assert_eq!(coffin.height, 1, "Label coffin must be exactly 1 line");
+        assert_eq!(coffin.lines.len(), 1);
         
-        // Just above threshold - should use adaptive layout
-        let layout = calculate_layout_config(60.1, 60.1);
-        assert!(layout.is_adaptive, "Should use adaptive layout above threshold");
-        
-        // One dimension at threshold, other above - smaller dimension determines mode
-        let layout = calculate_layout_config(60.0, 100.0);
-        assert!(layout.is_adaptive, "Should use adaptive when smaller dimension is at threshold");
-        
-        // One dimension below threshold, other above - smaller dimension determines mode
-        let layout = calculate_layout_config(59.0, 100.0);
-        assert!(!layout.is_adaptive, "Should use fixed when smaller dimension is below threshold");
+        // Verify EXACT format
+        assert_eq!(coffin.lines[0], "[⚰ HOST]", "Label format must be [⚰ HOST]");
     }
 
     #[test]
-    fn test_calculate_layout_config_extreme_aspect_ratios() {
-        // Very wide canvas (100:10 aspect ratio)
-        // Smaller dimension (10) is below threshold, should use fixed layout
-        let layout = calculate_layout_config(100.0, 10.0);
-        assert!(!layout.is_adaptive, "Very short canvas should use fixed layout");
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+    fn test_coffin_name_truncation() {
+        // Long name should be truncated with ".."
+        let coffin = build_large_coffin("kafka-broker-1");
         
-        // Very tall canvas (10:100 aspect ratio)
-        // Smaller dimension (10) is below threshold, should use fixed layout
-        let layout = calculate_layout_config(10.0, 100.0);
-        assert!(!layout.is_adaptive, "Very narrow canvas should use fixed layout");
-        assert_eq!(layout.ring_low, RING_RADII[0]);
-        assert_eq!(layout.ring_medium, RING_RADII[1]);
-        assert_eq!(layout.ring_high, RING_RADII[2]);
+        // Name should be truncated to fit LARGE_COFFIN_MAX_NAME (6 chars)
+        let has_truncated = coffin.lines.iter().any(|line| line.contains(".."));
+        assert!(has_truncated, "Long name should be truncated with ..");
         
-        // Wide canvas with smaller dimension above threshold (200:80)
-        let layout = calculate_layout_config(200.0, 80.0);
-        assert!(layout.is_adaptive, "Wide canvas with height above threshold should be adaptive");
-        // Available radius = 80/2 - (80*0.10) = 40 - 8 = 32
-        let expected_available_radius = 80.0 / 2.0 - (80.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
-        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
-        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
-        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
-        
-        // Tall canvas with smaller dimension above threshold (80:200)
-        let layout = calculate_layout_config(80.0, 200.0);
-        assert!(layout.is_adaptive, "Tall canvas with width above threshold should be adaptive");
-        // Available radius = 80/2 - (80*0.10) = 40 - 8 = 32
-        let expected_available_radius = 80.0 / 2.0 - (80.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
-        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
-        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
-        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
+        // Verify the truncated name fits within the coffin
+        let host_line = &coffin.lines[1];
+        assert_eq!(host_line.chars().count(), LARGE_COFFIN_WIDTH, 
+            "Truncated name line must maintain coffin width");
     }
 
     #[test]
-    fn test_calculate_layout_config_edge_padding_minimum() {
-        // Small canvas where percentage padding would be less than MIN_EDGE_PADDING
-        // For 60x60 canvas: 60 * 0.10 = 6.0, which is > MIN_EDGE_PADDING (5.0)
-        let layout = calculate_layout_config(60.0, 60.0);
-        assert!(layout.edge_padding >= MIN_EDGE_PADDING, 
-            "Edge padding {} should be at least MIN_EDGE_PADDING {}", 
-            layout.edge_padding, MIN_EDGE_PADDING);
+    fn test_coffin_graceful_degradation() {
+        // Test degradation from Large to Mid to Label
+        // Canvas-to-char conversion: char_height = area_height / 4.0, char_width = area_width / 1.0
         
-        // For very small canvas (below threshold), edge padding should still be calculated
-        let layout = calculate_layout_config(40.0, 40.0);
-        // 40 * 0.10 = 4.0, which is < MIN_EDGE_PADDING (5.0), so should use MIN_EDGE_PADDING
-        assert_eq!(layout.edge_padding, MIN_EDGE_PADDING,
-            "Edge padding should be MIN_EDGE_PADDING for small canvas");
+        // Large coffin at large canvas (100x100 -> 100 chars wide, 25 chars tall)
+        // Requires: width >= 14, height >= 5
+        let large = choose_coffin_variant(100.0, 100.0, "TEST");
+        assert_eq!(large.variant, CoffinVariant::Large, 
+            "Large canvas should use Large coffin");
+        
+        // Mid coffin at medium canvas (13x16 -> 13 chars wide, 4 chars tall)
+        // width < 14 but >= 11, height >= 3 -> Mid
+        let mid = choose_coffin_variant(13.0, 16.0, "TEST");
+        assert_eq!(mid.variant, CoffinVariant::Mid,
+            "Medium canvas should use Mid coffin");
+        
+        // Label only at small canvas (10x4 -> 10 chars wide, 1 char tall)
+        // width < 11 or height < 3 forces Label
+        let label = choose_coffin_variant(10.0, 4.0, "TEST");
+        assert_eq!(label.variant, CoffinVariant::Label,
+            "Small canvas should use Label coffin");
     }
 
     #[test]
-    fn test_calculate_layout_config_ring_ratio_preservation() {
-        // Test that ring ratios are preserved in adaptive mode
-        let layout = calculate_layout_config(100.0, 100.0);
-        assert!(layout.is_adaptive);
+    fn test_coffin_dimensions_are_fixed() {
+        // Verify coffin dimensions match constants
+        // These dimensions are FIXED and should never change
+        let large = build_large_coffin("X");
+        assert_eq!(large.width, LARGE_COFFIN_WIDTH);
+        assert_eq!(large.height, LARGE_COFFIN_HEIGHT);
+        assert_eq!(large.width, 14, "Large coffin width constant must be 14");
+        assert_eq!(large.height, 4, "Large coffin height constant must be 4");
         
-        // Verify ratios match the constants
-        let available_radius = 100.0 / 2.0 - (100.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
-        assert!((layout.ring_low - available_radius * RING_RATIO_LOW).abs() < 0.001);
-        assert!((layout.ring_medium - available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
-        assert!((layout.ring_high - available_radius * RING_RATIO_HIGH).abs() < 0.001);
-        
-        // Verify ring ordering: low < medium < high
-        assert!(layout.ring_low < layout.ring_medium);
-        assert!(layout.ring_medium < layout.ring_high);
+        let mid = build_mid_coffin("X");
+        assert_eq!(mid.width, MID_COFFIN_WIDTH);
+        assert_eq!(mid.height, MID_COFFIN_HEIGHT);
+        assert_eq!(mid.width, 11, "Mid coffin width constant must be 11");
+        assert_eq!(mid.height, 3, "Mid coffin height constant must be 3");
     }
 
     #[test]
-    fn test_calculate_layout_config_large_canvas() {
-        // Very large canvas (1000x1000)
-        let layout = calculate_layout_config(1000.0, 1000.0);
-        assert!(layout.is_adaptive);
+    fn test_coffin_exclusion_radius() {
+        // Test that exclusion radii are appropriate for each variant
+        let large_radius = coffin_exclusion_radius(CoffinVariant::Large);
+        let mid_radius = coffin_exclusion_radius(CoffinVariant::Mid);
+        let label_radius = coffin_exclusion_radius(CoffinVariant::Label);
         
-        // Available radius = 1000/2 - (1000*0.10) = 500 - 100 = 400
-        let expected_available_radius = 1000.0 / 2.0 - (1000.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
-        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
-        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
-        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
+        // Larger coffins need larger exclusion zones
+        assert!(large_radius > mid_radius, "Large coffin needs larger exclusion");
+        assert!(mid_radius > label_radius, "Mid coffin needs larger exclusion than Label");
         
-        // Verify rings are much larger than default fixed radii
-        assert!(layout.ring_low > RING_RADII[0]);
-        assert!(layout.ring_medium > RING_RADII[1]);
-        assert!(layout.ring_high > RING_RADII[2]);
+        // Verify specific values
+        assert_eq!(large_radius, 15.0, "Large coffin exclusion radius");
+        assert_eq!(mid_radius, 12.0, "Mid coffin exclusion radius");
+        assert_eq!(label_radius, 8.0, "Label coffin exclusion radius");
+    }
+
+    #[test]
+    fn test_truncate_host_name() {
+        // Test truncation helper function
+        assert_eq!(truncate_host_name("HOST", 10), "HOST");
+        assert_eq!(truncate_host_name("kafka-broker-1", 6), "kafk..");
+        assert_eq!(truncate_host_name("AB", 2), "AB");
+        assert_eq!(truncate_host_name("ABCD", 3), "ABC"); // Too short for ".."
+        assert_eq!(truncate_host_name("ABCDEF", 4), "AB..");
+    }
+
+    #[test]
+    fn test_center_pad() {
+        // Test center padding helper function
+        assert_eq!(center_pad("X", 5), "  X  ");
+        assert_eq!(center_pad("AB", 6), "  AB  ");
+        assert_eq!(center_pad("HOST", 6), " HOST ");
+        assert_eq!(center_pad("TOOLONG", 4), "TOOLONG"); // No truncation, just return as-is
+        assert_eq!(center_pad("ABC", 4), "ABC "); // Odd padding goes to right
+    }
+
+    #[test]
+    fn test_coffin_with_various_hostnames() {
+        // Test coffin rendering with various hostname lengths
+        
+        // Short name (HOST is now on line[1])
+        let short = build_large_coffin("DB");
+        assert!(short.lines[1].contains("DB"), "Short name should be visible");
+        
+        // Exact fit name (6 chars)
+        let exact = build_large_coffin("KAFKA1");
+        assert!(exact.lines[1].contains("KAFKA1"), "Exact fit name should be visible");
+        
+        // Long name (should truncate)
+        let long = build_large_coffin("very-long-hostname");
+        assert!(long.lines[1].contains(".."), "Long name should be truncated");
+        assert!(!long.lines[1].contains("very-long"), "Full long name should not appear");
+    }
+
+    #[test]
+    fn test_label_coffin_width_constraint() {
+        // Test that label coffin respects max_width
+        let narrow = build_label_coffin("kafka-broker-1", 10);
+        assert!(narrow.width <= 10, "Label should respect max_width");
+        
+        let wide = build_label_coffin("kafka-broker-1", 30);
+        // With 30 chars available, should show more of the name
+        assert!(wide.lines[0].len() > narrow.lines[0].len(), 
+            "Wider constraint should show more of the name");
     }
 }

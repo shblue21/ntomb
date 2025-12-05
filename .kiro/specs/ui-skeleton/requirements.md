@@ -57,11 +57,62 @@ UI Skeleton은 다음 핵심 컴포넌트들의 레이아웃, 렌더링, 인터�
 #### Acceptance Criteria
 
 1. WHEN Graveyard가 렌더링되면 THEN 시스템은 Canvas 위젯과 Braille 마커를 사용해야 합니다
-2. WHEN Graveyard가 렌더링되면 THEN 시스템은 중앙(50, 50)에 HOST 노드를 "⚰️ HOST" 또는 "⚰️ PROC: name (pid)" 형태로 표시해야 합니다
+2. WHEN Graveyard가 렌더링되면 THEN 시스템은 중앙(50, 50)에 HOST 관(Coffin)을 표시해야 합니다
 3. WHEN 엔드포인트가 존재하면 THEN 시스템은 HOST 주변에 방사형으로 배치해야 합니다
 4. WHEN 엔드포인트가 12개를 초과하면 THEN 시스템은 상위 12개만 표시하고 "+N more" 인디케이터를 표시해야 합니다
 5. WHEN 연결이 없으면 THEN 시스템은 "The graveyard is quiet..." 또는 "(no active connections for this process)" 메시지를 표시해야 합니다
 6. WHEN Graveyard 상단에 요약 라인이 렌더링되면 THEN 시스템은 Endpoints, Listening, Total 카운트를 표시해야 합니다
+
+### Requirement 3.1: 클래식 관(Coffin) 실루엣 - 핵심 요구사항
+
+**User Story:** 사용자로서, Graveyard 중앙에 항상 멋진 관(Coffin) 모양이 완전하게 표시되기를 원합니다. 이것이 ntomb TUI의 핵심 시각 요소입니다.
+
+#### 클래식 관 템플릿 (5줄 Full Version)
+
+```text
+  /‾‾‾‾‾‾\
+ /  ⚰️    \
+/   HOST   \
+ \        /
+  \______/
+```
+
+- 상단/하단이 대칭인 전형적인 관(coffin) 실루엣
+- 가운데 줄(HOST)에 실제 호스트/프로세스 이름을 표시
+- 관의 윤곽선(슬래시, 백슬래시, 밑줄 등)은 **절대로 깨지거나 잘려 보이면 안 됨**
+
+#### Acceptance Criteria
+
+1. WHEN Graveyard 중앙에 HOST 관이 렌더링되면 THEN 시스템은 위/아래가 대칭인 클래식 관 실루엣을 표시해야 합니다
+2. WHEN HOST 관이 렌더링되면 THEN 시스템은 관의 모든 외곽선(/, \, ‾, _)이 완전히 표시되어야 합니다 (일부만 잘려 보이는 상태 금지)
+3. WHEN 호스트 이름이 관 내부 폭을 초과하면 THEN 시스템은 이름을 중앙 정렬하고 필요시 "..."로 잘라내야 합니다
+4. WHEN 터미널/패널 크기가 5줄 관을 표시하기에 부족하면 THEN 시스템은 3줄 컴팩트 버전으로 graceful degrade 해야 합니다
+5. WHEN 3줄 관도 표시할 수 없으면 THEN 시스템은 "[⚰ HOST]" 형태의 단일 라벨로 최종 fallback 해야 합니다
+6. WHEN 관이 표시되면 THEN 시스템은 관 주변 1~2 캔버스 유닛 정도의 여백을 확보하여 다른 노드/선이 침범하지 않도록 해야 합니다
+7. WHEN 관이 렌더링되면 THEN 시스템은 Neon Purple 색상을 기본으로 사용하고, Overdrive 모드에서는 Pumpkin Orange를 사용해야 합니다
+
+#### 관 변형 (Variants)
+
+**Full 5-Line (기본):**
+```text
+  /‾‾‾‾‾‾\
+ /  ⚰️    \
+/   HOST   \
+ \        /
+  \______/
+```
+
+**Compact 3-Line (공간 부족 시):**
+```text
+ /‾‾‾‾‾‾\
+ | ⚰ HOST |
+ \______/
+```
+
+**Label Only (최소 공간):**
+```text
+[⚰ HOST]
+```
 
 ### Requirement 4: 엔드포인트 노드 시각화
 

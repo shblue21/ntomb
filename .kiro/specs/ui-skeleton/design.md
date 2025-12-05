@@ -188,6 +188,142 @@ const BONE_WHITE: Color = Color::Rgb(169, 177, 214);     // #a9b1d6
 const DEEP_INDIGO: Color = Color::Rgb(47, 51, 77);       // #2f334d (selection bg)
 ```
 
+## Classic Coffin Rendering System
+
+### 관(Coffin) 템플릿 정의
+
+ntomb의 핵심 시각 요소인 중앙 HOST 관은 다음 3가지 변형을 지원합니다:
+
+#### 1. Full 5-Line Coffin (기본)
+
+```text
+  /‾‾‾‾‾‾\      <- Line 0: 상단 뚜껑 (2칸 들여쓰기)
+ /  ⚰️    \     <- Line 1: 상단 확장 (1칸 들여쓰기, 아이콘)
+/   HOST   \    <- Line 2: 본체 (0칸 들여쓰기, 이름)
+ \        /     <- Line 3: 하단 수축 (1칸 들여쓰기)
+  \______/      <- Line 4: 하단 바닥 (2칸 들여쓰기)
+```
+
+**구조 규칙:**
+- 최대 폭: `name_len + 6` (양쪽 슬래시 + 패딩)
+- 높이: 5줄 고정
+- 대칭: Line 0 ↔ Line 4, Line 1 ↔ Line 3
+
+#### 2. Compact 3-Line Coffin (공간 부족 시)
+
+```text
+ /‾‾‾‾‾‾\       <- Line 0: 상단
+ | ⚰ HOST |     <- Line 1: 본체 (아이콘 + 이름)
+ \______/       <- Line 2: 하단
+```
+
+**구조 규칙:**
+- 최대 폭: `name_len + 6`
+- 높이: 3줄 고정
+
+#### 3. Label Only (최소 공간)
+
+```text
+[⚰ HOST]
+```
+
+**구조 규칙:**
+- 폭: `name_len + 4` (괄호 + 아이콘 + 공백)
+- 높이: 1줄
+
+### CoffinRender 구조체
+
+```rust
+/// 관 렌더링 결과를 담는 구조체
+pub struct CoffinRender {
+    /// 관을 구성하는 각 줄 (위에서 아래로)
+    pub lines: Vec<String>,
+    /// 사용된 관 변형 종류
+    pub variant: CoffinVariant,
+    /// 관의 최대 폭 (문자 수)
+    pub width: usize,
+    /// 관의 높이 (줄 수)
+    pub height: usize,
+}
+
+/// 관 변형 종류
+pub enum CoffinVariant {
+    /// 5줄 전체 관
+    Full5Lines,
+    /// 3줄 컴팩트 관
+    Compact3Lines,
+    /// 1줄 라벨만
+    LabelOnly,
+}
+```
+
+### build_coffin_block 함수
+
+```rust
+/// Graveyard 중앙 HOST 관 블록을 생성한다.
+/// 
+/// # Arguments
+/// * `host_name` - 표시할 호스트/프로세스 이름
+/// * `area_width` - Graveyard 패널의 가로 크기 (캔버스 유닛)
+/// * `area_height` - Graveyard 패널의 세로 크기 (캔버스 유닛)
+/// 
+/// # Returns
+/// CoffinRender 구조체 (관 라인들과 메타데이터)
+/// 
+/// # Algorithm
+/// 1. 호스트 이름 길이 확인 및 필요시 truncate
+/// 2. 5줄 관이 들어갈 수 있는지 확인
+/// 3. 불가능하면 3줄 관 시도
+/// 4. 그래도 불가능하면 1줄 라벨로 fallback
+pub fn build_coffin_block(
+    host_name: &str,
+    area_width: f64,
+    area_height: f64,
+) -> CoffinRender
+```
+
+### 호스트 이름 처리 규칙
+
+1. **최대 길이**: 12자 (관 내부 폭 기준)
+2. **Truncation**: 12자 초과 시 `name[..9] + "..."`
+3. **중앙 정렬**: 관 본체 라인에서 이름을 중앙에 배치
+
+### Graceful Degradation 전략
+
+```
+┌─────────────────────────────────────────────────────┐
+│ area_height >= 10 && area_width >= 20               │
+│ → Full 5-Line Coffin                                │
+├─────────────────────────────────────────────────────┤
+│ area_height >= 6 && area_width >= 16                │
+│ → Compact 3-Line Coffin                             │
+├─────────────────────────────────────────────────────┤
+│ area_width >= 10                                    │
+│ → Label Only [⚰ HOST]                               │
+├─────────────────────────────────────────────────────┤
+│ Otherwise                                           │
+│ → 빈 CoffinRender (렌더링 불가)                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### 관 주변 여백 (Exclusion Zone)
+
+관 주변에는 다른 노드/선이 침범하지 않도록 여백을 확보합니다:
+
+```
+     ┌───────────────────┐
+     │   Exclusion Zone  │
+     │  ┌─────────────┐  │
+     │  │   COFFIN    │  │
+     │  └─────────────┘  │
+     │                   │
+     └───────────────────┘
+```
+
+- **수평 여백**: 관 폭의 1.5배
+- **수직 여백**: 관 높이의 1.2배
+- `coffin_radius` 상수로 제어 (현재 15.0 캔버스 유닛)
+
 ## Node Placement Algorithm
 
 ### 1. Endpoint Aggregation
