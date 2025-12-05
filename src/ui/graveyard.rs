@@ -1016,10 +1016,28 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     let all_conn_counts: Vec<usize> = endpoint_data.iter().map(|(_, _, count, _, _)| *count).collect();
     
-    // Use fixed layout configuration for stable rendering
-    // Canvas uses virtual 0-100 coordinate space (x_bounds and y_bounds are [0, 100])
-    // Fixed layout ensures consistent node positions regardless of terminal size
-    let layout_config = LayoutConfig::default();
+    // Calculate adaptive layout based on canvas size
+    // Larger terminals get larger ring radii for better spacing
+    let canvas_width_cells = chunks[1].width.saturating_sub(2) as f64;
+    let canvas_height_cells = chunks[1].height.saturating_sub(1) as f64;
+    
+    // Use the smaller dimension to determine ring scaling
+    let smaller_dimension = canvas_width_cells.min(canvas_height_cells);
+    
+    // Scale ring radii based on canvas size
+    // Base radii: [25.0, 35.0, 45.0]
+    // Scale factor starts at 1.0 for small terminals (≤30 cells)
+    // Scales up more aggressively to utilize large terminal space
+    // Max scale factor 3.5 for very large terminals (≥100 cells)
+    let scale_factor = ((smaller_dimension - 30.0) / 20.0 + 1.0).clamp(1.0, 3.5);
+    
+    let layout_config = LayoutConfig {
+        ring_low: RING_RADII[0] * scale_factor,
+        ring_medium: RING_RADII[1] * scale_factor,
+        ring_high: RING_RADII[2] * scale_factor,
+        edge_padding: MIN_EDGE_PADDING,
+        is_adaptive: scale_factor > 1.0,
+    };
     
     // Count endpoints per latency bucket for position calculation
     let mut bucket_counts: HashMap<LatencyBucket, usize> = HashMap::new();
