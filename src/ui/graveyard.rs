@@ -656,10 +656,12 @@ pub fn choose_coffin_variant(area_width: f64, area_height: f64, host: &str) -> C
 /// # Returns
 /// Radius in canvas units for the exclusion zone
 pub fn coffin_exclusion_radius(variant: CoffinVariant) -> f64 {
+    // Increased exclusion zones to ensure coffin stands out clearly
+    // with at least 1-2 lines of empty space around it
     match variant {
-        CoffinVariant::Large => 15.0,  // 5-line coffin needs larger exclusion
-        CoffinVariant::Mid => 12.0,    // 3-line coffin
-        CoffinVariant::Label => 8.0,   // 1-line label
+        CoffinVariant::Large => 20.0,  // 4-line coffin needs larger exclusion (was 15)
+        CoffinVariant::Mid => 16.0,    // 3-line coffin (was 12)
+        CoffinVariant::Label => 10.0,  // 1-line label (was 8)
     }
 }
 
@@ -1793,10 +1795,10 @@ mod tests {
         assert!(large_radius > mid_radius, "Large coffin needs larger exclusion");
         assert!(mid_radius > label_radius, "Mid coffin needs larger exclusion than Label");
         
-        // Verify specific values
-        assert_eq!(large_radius, 15.0, "Large coffin exclusion radius");
-        assert_eq!(mid_radius, 12.0, "Mid coffin exclusion radius");
-        assert_eq!(label_radius, 8.0, "Label coffin exclusion radius");
+        // Verify specific values (increased for better visual separation)
+        assert_eq!(large_radius, 20.0, "Large coffin exclusion radius");
+        assert_eq!(mid_radius, 16.0, "Mid coffin exclusion radius");
+        assert_eq!(label_radius, 10.0, "Label coffin exclusion radius");
     }
 
     #[test]
