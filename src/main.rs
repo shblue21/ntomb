@@ -45,6 +45,10 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
     loop {
         // Update app state (animations, traffic history, etc.)
         app.on_tick();
+        
+        // Update frame time tracking for performance monitoring (Requirement 6.5)
+        // This monitors frame time and auto-reduces animation complexity if needed
+        app.update_frame_time();
 
         // Draw the UI
         terminal.draw(|f| ui::draw(f, &mut app))?;
@@ -86,6 +90,24 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<(
                     }
                     KeyCode::Char('-') | KeyCode::Char('_') => {
                         app.decrease_refresh_rate();
+                    }
+                    // Toggle animations (Requirements 2.4, 5.1)
+                    KeyCode::Char('a') | KeyCode::Char('A') => {
+                        app.graveyard_settings.animations_enabled =
+                            !app.graveyard_settings.animations_enabled;
+                        // Reset animation reduction when user manually toggles animations
+                        // This allows the system to try full animation complexity again
+                        app.reset_animation_reduction();
+                    }
+                    // Toggle Kiroween Overdrive mode (Requirements 4.1, 5.2)
+                    KeyCode::Char('h') | KeyCode::Char('H') => {
+                        app.graveyard_settings.overdrive_enabled =
+                            !app.graveyard_settings.overdrive_enabled;
+                    }
+                    // Toggle endpoint labels (Requirements 3.6, 5.3)
+                    KeyCode::Char('t') | KeyCode::Char('T') => {
+                        app.graveyard_settings.labels_enabled =
+                            !app.graveyard_settings.labels_enabled;
                     }
                     _ => {}
                 }

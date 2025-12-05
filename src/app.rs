@@ -14,6 +14,62 @@ pub enum GraveyardMode {
     Process,
 }
 
+/// Visual settings for the Graveyard panel
+/// Controls animations, labels, and theme enhancements
+#[derive(Debug, Clone)]
+pub struct GraveyardSettings {
+    /// Enable particle animations on edges (toggle with 'A' key)
+    pub animations_enabled: bool,
+
+    /// Show text labels on endpoints (toggle with 't' key)
+    pub labels_enabled: bool,
+
+    /// Enable Kiroween Overdrive theme (toggle with 'H' key)
+    pub overdrive_enabled: bool,
+}
+
+impl Default for GraveyardSettings {
+    fn default() -> Self {
+        Self {
+            animations_enabled: true,
+            labels_enabled: true,
+            overdrive_enabled: false, // Off by default per requirements
+        }
+    }
+}
+
+/// Configuration for latency ring thresholds
+#[derive(Debug, Clone)]
+pub struct LatencyConfig {
+    /// Threshold for "low latency" bucket in milliseconds
+    pub low_threshold_ms: u64,
+
+    /// Threshold for "high latency" bucket in milliseconds
+    pub high_threshold_ms: u64,
+}
+
+impl Default for LatencyConfig {
+    fn default() -> Self {
+        Self {
+            low_threshold_ms: 50,
+            high_threshold_ms: 200,
+        }
+    }
+}
+
+/// Latency bucket classification for ring positioning
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LatencyBucket {
+    /// Low latency (< 50ms) - innermost ring
+    Low,
+    /// Medium latency (50-200ms) - middle ring
+    Medium,
+    /// High latency (> 200ms) - outermost ring
+    High,
+    /// No latency data available - use default position
+    Unknown,
+}
+
 /// Number of log entries in the grimoire (for bounds checking)
 #[allow(dead_code)]
 const LOG_ENTRY_COUNT: usize = 6;
@@ -38,6 +94,13 @@ const DATA_REFRESH_MULTIPLIER: u64 = 10;
 
 /// Duration to highlight recently changed refresh intervals
 pub const CHANGE_HIGHLIGHT_DURATION: Duration = Duration::from_millis(500);
+
+/// Frame time threshold for auto-reducing animation complexity (100ms)
+/// If frame time consistently exceeds this, particle count is reduced
+const FRAME_TIME_THRESHOLD_MS: u128 = 100;
+
+/// Number of consecutive slow frames before triggering complexity reduction
+const SLOW_FRAME_COUNT_THRESHOLD: u32 = 5;
 
 /// Configuration for refresh intervals (unified)
 #[derive(Debug, Clone)]
@@ -130,6 +193,24 @@ pub struct AppState {
 
     /// Refresh interval configuration
     pub refresh_config: RefreshConfig,
+
+    /// Graveyard visual settings (animations, labels, overdrive)
+    pub graveyard_settings: GraveyardSettings,
+
+    /// Latency bucket configuration for ring positioning
+    pub latency_config: LatencyConfig,
+    
+    /// Frame time tracking for performance monitoring (Requirements 6.5)
+    /// Stores the timestamp of the last frame render
+    last_frame_time: Instant,
+    
+    /// Counter for consecutive slow frames (frame time > 100ms)
+    /// Used to trigger automatic animation complexity reduction
+    slow_frame_count: u32,
+    
+    /// Whether animation complexity has been auto-reduced due to performance
+    /// When true, particle rendering uses reduced particle count
+    pub animation_reduced: bool,
 }
 
 impl AppState {
@@ -155,6 +236,11 @@ impl AppState {
             selected_connection: None,
             connection_list_state: ListState::default(),
             refresh_config: RefreshConfig::new(),
+            graveyard_settings: GraveyardSettings::default(),
+            latency_config: LatencyConfig::default(),
+            last_frame_time: now,
+            slow_frame_count: 0,
+            animation_reduced: false,
         }
     }
 
@@ -357,6 +443,50 @@ impl AppState {
         self.refresh_config.refresh_ms = new_interval.min(MAX_REFRESH_MS);
         self.refresh_config.last_change = Some(Instant::now());
     }
+    
+    /// Update frame time tracking and auto-reduce animation complexity if needed
+    /// 
+    /// This method should be called at the start of each frame render.
+    /// It monitors frame time and automatically reduces animation complexity
+    /// if frame time consistently exceeds FRAME_TIME_THRESHOLD_MS (100ms).
+    /// 
+    /// Requirements: 6.5 - Auto-reduce animation complexity when CPU usage is high
+    pub fn update_frame_time(&mut self) {
+        let now = Instant::now();
+        let frame_time = now.duration_since(self.last_frame_time).as_millis();
+        self.last_frame_time = now;
+        
+        // Check if frame time exceeds threshold
+        if frame_time > FRAME_TIME_THRESHOLD_MS {
+            self.slow_frame_count += 1;
+            
+            // If we've had enough consecutive slow frames, reduce animation complexity
+            if self.slow_frame_count >= SLOW_FRAME_COUNT_THRESHOLD && !self.animation_reduced {
+                self.animation_reduced = true;
+                // Log the auto-reduction for debugging
+                tracing::info!(
+                    frame_time_ms = frame_time,
+                    slow_frame_count = self.slow_frame_count,
+                    "Auto-reducing animation complexity due to slow frame times"
+                );
+            }
+        } else {
+            // Reset slow frame counter on a fast frame
+            // Only reset if we haven't already reduced complexity
+            if !self.animation_reduced {
+                self.slow_frame_count = 0;
+            }
+        }
+    }
+    
+    /// Reset animation complexity reduction
+    /// 
+    /// Called when user manually toggles animations or when performance improves.
+    /// This allows the system to try full animation complexity again.
+    pub fn reset_animation_reduction(&mut self) {
+        self.animation_reduced = false;
+        self.slow_frame_count = 0;
+    }
 }
 
 impl Default for AppState {
@@ -420,6 +550,314 @@ mod tests {
             prop_assert_eq!(app.graveyard_mode, GraveyardMode::Host);
             prop_assert_eq!(app.selected_process_pid, None);
         }
+    }
+
+    // ============================================================================
+    // Task 24.1: Integration tests for toggle persistence
+    // Requirements: 5.7 - Toggles maintain state across frames and apply immediately
+    // ============================================================================
+
+    #[test]
+    fn test_toggle_animations_persistence_across_ticks() {
+        // Test that animation toggle maintains state across multiple on_tick() calls
+        // Requirements: 5.7 - Toggle changes apply immediately without restart
+        let mut app = AppState::new();
+        
+        // Default state: animations enabled
+        assert!(app.graveyard_settings.animations_enabled);
+        
+        // Toggle animations off
+        app.graveyard_settings.animations_enabled = false;
+        
+        // Simulate multiple frame updates (on_tick calls)
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Animation setting should persist across ticks
+        assert!(!app.graveyard_settings.animations_enabled);
+        
+        // Toggle back on
+        app.graveyard_settings.animations_enabled = true;
+        
+        // Simulate more frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Should still be enabled
+        assert!(app.graveyard_settings.animations_enabled);
+    }
+
+    #[test]
+    fn test_toggle_overdrive_persistence_across_ticks() {
+        // Test that overdrive toggle maintains state across multiple on_tick() calls
+        // Requirements: 5.7 - Toggle changes apply immediately without restart
+        let mut app = AppState::new();
+        
+        // Default state: overdrive disabled
+        assert!(!app.graveyard_settings.overdrive_enabled);
+        
+        // Toggle overdrive on
+        app.graveyard_settings.overdrive_enabled = true;
+        
+        // Simulate multiple frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Overdrive setting should persist across ticks
+        assert!(app.graveyard_settings.overdrive_enabled);
+        
+        // Toggle back off
+        app.graveyard_settings.overdrive_enabled = false;
+        
+        // Simulate more frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Should still be disabled
+        assert!(!app.graveyard_settings.overdrive_enabled);
+    }
+
+    #[test]
+    fn test_toggle_labels_persistence_across_ticks() {
+        // Test that labels toggle maintains state across multiple on_tick() calls
+        // Requirements: 5.7 - Toggle changes apply immediately without restart
+        let mut app = AppState::new();
+        
+        // Default state: labels enabled
+        assert!(app.graveyard_settings.labels_enabled);
+        
+        // Toggle labels off
+        app.graveyard_settings.labels_enabled = false;
+        
+        // Simulate multiple frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Labels setting should persist across ticks
+        assert!(!app.graveyard_settings.labels_enabled);
+        
+        // Toggle back on
+        app.graveyard_settings.labels_enabled = true;
+        
+        // Simulate more frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // Should still be enabled
+        assert!(app.graveyard_settings.labels_enabled);
+    }
+
+    #[test]
+    fn test_toggle_immediate_application() {
+        // Test that toggle changes apply immediately (no restart required)
+        // Requirements: 5.7 - Changes apply immediately
+        let mut app = AppState::new();
+        
+        // Record initial states
+        let initial_animations = app.graveyard_settings.animations_enabled;
+        let initial_overdrive = app.graveyard_settings.overdrive_enabled;
+        let initial_labels = app.graveyard_settings.labels_enabled;
+        
+        // Toggle all settings
+        app.graveyard_settings.animations_enabled = !initial_animations;
+        app.graveyard_settings.overdrive_enabled = !initial_overdrive;
+        app.graveyard_settings.labels_enabled = !initial_labels;
+        
+        // Verify changes are immediately reflected (no on_tick needed)
+        assert_eq!(app.graveyard_settings.animations_enabled, !initial_animations);
+        assert_eq!(app.graveyard_settings.overdrive_enabled, !initial_overdrive);
+        assert_eq!(app.graveyard_settings.labels_enabled, !initial_labels);
+    }
+
+    // ============================================================================
+    // Task 24.2: Integration tests for mode combinations
+    // Requirements: 5.4 - Static graphics convey same information when animations disabled
+    // ============================================================================
+
+    #[test]
+    fn test_host_mode_with_overdrive() {
+        // Test Host mode + Overdrive enabled combination
+        // Requirements: 5.4 - Mode combinations work correctly
+        let mut app = AppState::new();
+        
+        // Set up Host mode with Overdrive
+        app.graveyard_mode = GraveyardMode::Host;
+        app.graveyard_settings.overdrive_enabled = true;
+        
+        // Add test connections
+        let test_conn = Connection {
+            local_addr: "127.0.0.1".to_string(),
+            local_port: 8080,
+            remote_addr: "192.168.1.1".to_string(),
+            remote_port: 443,
+            state: crate::net::ConnectionState::Established,
+            inode: Some(12345),
+            pid: Some(1234),
+            process_name: Some("test_process".to_string()),
+        };
+        app.connections = vec![test_conn];
+        
+        // Verify state combination
+        assert_eq!(app.graveyard_mode, GraveyardMode::Host);
+        assert!(app.graveyard_settings.overdrive_enabled);
+        
+        // Simulate frame updates - should not crash or change mode
+        for _ in 0..5 {
+            app.on_tick();
+        }
+        
+        // State should be preserved
+        assert_eq!(app.graveyard_mode, GraveyardMode::Host);
+        assert!(app.graveyard_settings.overdrive_enabled);
+        assert_eq!(app.connections.len(), 1);
+    }
+
+    #[test]
+    fn test_process_mode_with_animations_off() {
+        // Test Process mode + Animations disabled combination
+        // Requirements: 5.4 - Static graphics convey same information
+        let mut app = AppState::new();
+        
+        // Add test connection and select it
+        let test_conn = Connection {
+            local_addr: "127.0.0.1".to_string(),
+            local_port: 8080,
+            remote_addr: "192.168.1.1".to_string(),
+            remote_port: 443,
+            state: crate::net::ConnectionState::Established,
+            inode: Some(12345),
+            pid: Some(5678),
+            process_name: Some("test_process".to_string()),
+        };
+        app.connections = vec![test_conn];
+        app.selected_connection = Some(0);
+        
+        // Switch to Process mode
+        app.toggle_graveyard_mode();
+        assert_eq!(app.graveyard_mode, GraveyardMode::Process);
+        assert_eq!(app.selected_process_pid, Some(5678));
+        
+        // Disable animations
+        app.graveyard_settings.animations_enabled = false;
+        
+        // Verify state combination
+        assert_eq!(app.graveyard_mode, GraveyardMode::Process);
+        assert!(!app.graveyard_settings.animations_enabled);
+        
+        // Simulate frame updates
+        for _ in 0..5 {
+            app.on_tick();
+        }
+        
+        // State should be preserved
+        assert_eq!(app.graveyard_mode, GraveyardMode::Process);
+        assert!(!app.graveyard_settings.animations_enabled);
+        assert_eq!(app.selected_process_pid, Some(5678));
+    }
+
+    #[test]
+    fn test_all_toggles_off() {
+        // Test with all visual toggles disabled
+        // Requirements: 5.4 - Static graphics convey same information
+        let mut app = AppState::new();
+        
+        // Disable all toggles
+        app.graveyard_settings.animations_enabled = false;
+        app.graveyard_settings.overdrive_enabled = false;
+        app.graveyard_settings.labels_enabled = false;
+        
+        // Add test connections
+        let test_conns = vec![
+            Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8080,
+                remote_addr: "192.168.1.1".to_string(),
+                remote_port: 443,
+                state: crate::net::ConnectionState::Established,
+                inode: Some(1),
+                pid: Some(100),
+                process_name: Some("proc1".to_string()),
+            },
+            Connection {
+                local_addr: "127.0.0.1".to_string(),
+                local_port: 8081,
+                remote_addr: "10.0.0.1".to_string(),
+                remote_port: 80,
+                state: crate::net::ConnectionState::Listen,
+                inode: Some(2),
+                pid: Some(200),
+                process_name: Some("proc2".to_string()),
+            },
+        ];
+        app.connections = test_conns;
+        
+        // Verify all toggles are off
+        assert!(!app.graveyard_settings.animations_enabled);
+        assert!(!app.graveyard_settings.overdrive_enabled);
+        assert!(!app.graveyard_settings.labels_enabled);
+        
+        // Simulate frame updates
+        for _ in 0..10 {
+            app.on_tick();
+        }
+        
+        // All toggles should remain off
+        assert!(!app.graveyard_settings.animations_enabled);
+        assert!(!app.graveyard_settings.overdrive_enabled);
+        assert!(!app.graveyard_settings.labels_enabled);
+        
+        // Connections should still be accessible
+        assert_eq!(app.connections.len(), 2);
+    }
+
+    #[test]
+    fn test_mode_switch_preserves_toggle_settings() {
+        // Test that switching between Host and Process mode preserves toggle settings
+        // Requirements: 5.4, 5.7
+        let mut app = AppState::new();
+        
+        // Set up custom toggle configuration
+        app.graveyard_settings.animations_enabled = false;
+        app.graveyard_settings.overdrive_enabled = true;
+        app.graveyard_settings.labels_enabled = false;
+        
+        // Add test connection
+        let test_conn = Connection {
+            local_addr: "127.0.0.1".to_string(),
+            local_port: 8080,
+            remote_addr: "192.168.1.1".to_string(),
+            remote_port: 443,
+            state: crate::net::ConnectionState::Established,
+            inode: Some(12345),
+            pid: Some(9999),
+            process_name: Some("test_process".to_string()),
+        };
+        app.connections = vec![test_conn];
+        app.selected_connection = Some(0);
+        
+        // Switch to Process mode
+        app.toggle_graveyard_mode();
+        assert_eq!(app.graveyard_mode, GraveyardMode::Process);
+        
+        // Toggle settings should be preserved
+        assert!(!app.graveyard_settings.animations_enabled);
+        assert!(app.graveyard_settings.overdrive_enabled);
+        assert!(!app.graveyard_settings.labels_enabled);
+        
+        // Switch back to Host mode
+        app.toggle_graveyard_mode();
+        assert_eq!(app.graveyard_mode, GraveyardMode::Host);
+        
+        // Toggle settings should still be preserved
+        assert!(!app.graveyard_settings.animations_enabled);
+        assert!(app.graveyard_settings.overdrive_enabled);
+        assert!(!app.graveyard_settings.labels_enabled);
     }
 
     #[test]
