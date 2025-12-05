@@ -168,11 +168,11 @@ mod tests {
         let mut app = AppState::new();
         let initial_rate = app.refresh_config.refresh_ms;
         
-        // Increase rate (decrease interval)
+        // + = slower refresh (increase interval)
         handle_key_event(&mut app, KeyCode::Char('+'));
-        assert!(app.refresh_config.refresh_ms < initial_rate);
+        assert!(app.refresh_config.refresh_ms > initial_rate);
         
-        // Decrease rate (increase interval)
+        // - = faster refresh (decrease interval back to initial)
         handle_key_event(&mut app, KeyCode::Char('-'));
         assert_eq!(app.refresh_config.refresh_ms, initial_rate);
     }

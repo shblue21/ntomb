@@ -817,6 +817,10 @@ mod tests {
     fn test_connection_selection_navigation() {
         // Test with empty connections
         let mut app = AppState::new();
+        // Clear any connections loaded during initialization
+        app.connections.clear();
+        app.selected_connection = None;
+        
         app.select_next_connection();
         assert_eq!(app.selected_connection, None);
         app.select_previous_connection();
