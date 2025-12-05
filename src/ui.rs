@@ -317,6 +317,97 @@ pub fn particle_position(
     (x, y)
 }
 
+/// Draw the coffin block on the canvas at the HOST center
+/// 
+/// Renders a simple, clean coffin representation that doesn't interfere
+/// with the Braille network visualization. Uses a compact single-line
+/// format to avoid overlap with network edges.
+/// 
+/// Display format:
+/// ```text
+/// ╔═══════════════╗
+/// ║  ⚰ HOST_NAME  ║
+/// ╚═══════════════╝
+/// ```
+/// 
+/// # Arguments
+/// * `ctx` - The canvas context for drawing
+/// * `host_name` - The name to display (e.g., "HOST", "kafka-broker-1")
+/// * `overdrive_enabled` - When true, uses Pumpkin Orange for a "burning" effect
+/// 
+/// # Wide Character Note
+/// The ⚰ emoji may render as 2 characters wide in some terminals.
+/// The box is sized to accommodate this.
+pub fn draw_coffin_block(
+    ctx: &mut ratatui::widgets::canvas::Context<'_>,
+    host_name: &str,
+    overdrive_enabled: bool,
+) {
+    let (cx, cy) = HOST_CENTER;
+    
+    // Coffin color: Bone White normally, Pumpkin Orange in overdrive mode
+    let coffin_color = if overdrive_enabled {
+        PUMPKIN_ORANGE
+    } else {
+        BONE_WHITE
+    };
+    
+    // Truncate host name if too long (max 10 chars for display)
+    let display_name = if host_name.len() > 10 {
+        format!("{}...", &host_name[..7])
+    } else {
+        host_name.to_string()
+    };
+    
+    // Build the coffin box (3 lines)
+    // Calculate box width based on content: "  ⚰ " + name + "  "
+    // ⚰ emoji is ~2 chars wide, so total inner width = 4 + name_len + 2
+    let inner_width = 6 + display_name.len();
+    let border_char = "═";
+    let top_border = format!("╔{}╗", border_char.repeat(inner_width));
+    let content = format!("║  ⚰ {}  ║", display_name);
+    let bottom_border = format!("╚{}╝", border_char.repeat(inner_width));
+    
+    // Calculate character width for centering
+    // Each character is approximately 1.2 canvas units wide
+    let char_width = 1.2;
+    let box_width = top_border.chars().count() as f64 * char_width;
+    let x = cx - box_width / 2.0;
+    
+    // Vertical spacing between lines (canvas units)
+    let line_spacing = 3.5;
+    
+    // Draw top border
+    ctx.print(
+        x,
+        cy + line_spacing,
+        Span::styled(
+            top_border,
+            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
+        ),
+    );
+    
+    // Draw content line with coffin emoji and host name
+    ctx.print(
+        x,
+        cy,
+        Span::styled(
+            content,
+            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
+        ),
+    );
+    
+    // Draw bottom border
+    ctx.print(
+        x,
+        cy - line_spacing,
+        Span::styled(
+            bottom_border,
+            Style::default().fg(coffin_color).add_modifier(Modifier::BOLD),
+        ),
+    );
+}
+
 /// Draw latency rings on the canvas around the HOST center
 /// 
 /// Draws 3 concentric dotted circles using Braille markers:
@@ -799,8 +890,10 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     let endpoint_count = endpoints_map.len();
 
     // Determine center node label based on mode (Requirement 5.1)
+    // Note: The coffin emoji is now rendered as part of the coffin block,
+    // so we only include the text label here
     let center_label = match app.graveyard_mode {
-        GraveyardMode::Host => "⚰️ HOST".to_string(),
+        GraveyardMode::Host => "HOST".to_string(),
         GraveyardMode::Process => {
             if let Some(pid) = app.selected_process_pid {
                 // Find the process name from the filtered connections
@@ -815,9 +908,15 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     })
                     .unwrap_or_else(|| "unknown".to_string());
                 
-                format!("⚰️ PROC: {} ({})", process_name, pid)
+                // Truncate process name if too long for coffin block display
+                let short_name = if process_name.len() > 8 {
+                    format!("{}...", &process_name[..5])
+                } else {
+                    process_name
+                };
+                format!("{} ({})", short_name, pid)
             } else {
-                "⚰️ HOST".to_string()
+                "HOST".to_string()
             }
         }
     };
@@ -1074,9 +1173,11 @@ fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 }
             }
 
-            // Draw central node with mode-specific label (Requirement 5.1)
-            let label_offset = (center_label.len() as f64 / 2.0) * 1.2;
-            ctx.print(cx - label_offset, cy + 2.0, Span::styled(center_label.clone(), Style::default().fg(PUMPKIN_ORANGE).add_modifier(Modifier::BOLD)));
+            // Draw coffin block at the central HOST node
+            // The coffin provides a decorative focal point that enhances the necromancer theme
+            // In overdrive mode, the coffin appears in Pumpkin Orange ("burning" effect)
+            // The host name is displayed as part of the coffin block (Requirement 5.1)
+            draw_coffin_block(ctx, &center_label, overdrive_enabled);
 
             // Draw endpoint nodes with type-specific icons and colors (Requirements 3.1, 3.2, 3.3, 3.4, 3.5)
             // When overdrive is enabled, use themed icons (Requirements 4.2, 4.3, 4.4)
