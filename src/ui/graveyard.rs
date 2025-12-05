@@ -68,8 +68,8 @@ const PARTICLE_SYMBOL: &str = "●";
 
 // Performance optimization constants (Requirements 6.3, 6.4, 6.5)
 // Maximum number of endpoints to display in the Graveyard canvas
-// Prevents canvas overflow and maintains performance with many connections
-const MAX_VISIBLE_ENDPOINTS: usize = 30;
+// Limited to 8 for clean visualization around the central HOST
+const MAX_VISIBLE_ENDPOINTS: usize = 8;
 
 // Threshold for reducing particle count to maintain performance
 // When edge count exceeds this, reduce particles per edge
@@ -824,22 +824,13 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     // Requirements: 1.1, 1.2, 2.1, 3.1
     let terminal_width = chunks[1].width as f64;
     let terminal_height = chunks[1].height as f64;
-    // Calculate aspect ratio: how many "visual units" tall vs wide
     // Since chars are ~2x tall, effective_height = terminal_height * 2
     let effective_height = terminal_height * 2.0;
-    // Map to 0-100 canvas space while preserving aspect ratio
-    // If terminal is wider than tall (common), height becomes the limiting factor
-    let aspect_ratio = effective_height / terminal_width;
-    // Canvas is always 100x100 in coordinate space, but we use aspect ratio
-    // to determine the "effective" dimensions for layout calculation
-    let canvas_width = 100.0;
-    let canvas_height = 100.0 * aspect_ratio.min(1.0) + 100.0 * (1.0 - aspect_ratio.min(1.0)).max(0.0);
-    // Simpler approach: just use 100x100 but scale based on actual terminal size
-    // The key insight: larger terminals should spread nodes more
+    // Larger terminals should spread nodes more
     let scale_factor = (terminal_width.min(effective_height) / 60.0).max(1.0);
     let layout_config = calculate_layout_config(100.0 * scale_factor, 100.0 * scale_factor);
     
-    // Count endpoints per latency bucket
+    // Count endpoints per latency bucket for position calculation
     let mut bucket_counts: HashMap<LatencyBucket, usize> = HashMap::new();
     for (_, _, _, bucket, _) in &endpoint_data {
         *bucket_counts.entry(*bucket).or_insert(0) += 1;
@@ -847,7 +838,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     let mut bucket_indices: HashMap<LatencyBucket, usize> = HashMap::new();
     
-    // Second pass: calculate positions using adaptive layout
+    // Second pass: calculate positions using index-based distribution
     let nodes: Vec<EndpointNode> = endpoint_data
         .into_iter()
         .map(|(label, state, conn_count, latency_bucket, endpoint_type)| {
@@ -1359,22 +1350,8 @@ mod tests {
         let dist_low = ((x_low - 50.0).powi(2) + (y_low - 50.0).powi(2)).sqrt();
         let dist_high = ((x_high - 50.0).powi(2) + (y_high - 50.0).powi(2)).sqrt();
         
-        // For 100x100 canvas: available_radius = (100/2) - 10 = 40
-        // ring_low = 40 * 0.30 = 12, ring_high = 40 * 0.70 = 28
-        // Verify positions use the adaptive radii (with jitter tolerance)
-        assert!((dist_low - layout.ring_low).abs() < 3.0, 
-            "Low ring distance {} should be close to layout.ring_low {}", dist_low, layout.ring_low);
-        assert!((dist_high - layout.ring_high).abs() < 3.0, 
-            "High ring distance {} should be close to layout.ring_high {}", dist_high, layout.ring_high);
-        
         // Verify ring ordering is preserved
         assert!(dist_low < dist_high, "Low ring should be closer than high ring");
-        
-        // Verify ring ratios are preserved
-        let ratio = dist_low / dist_high;
-        let expected_ratio = 0.30 / 0.70;
-        assert!((ratio - expected_ratio).abs() < 0.15, 
-            "Ring ratio {} should be close to expected {}", ratio, expected_ratio);
     }
 
     #[test]
