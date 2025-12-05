@@ -963,13 +963,13 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
         ),
         // Legend for icons
         Span::styled("[", Style::default().fg(Color::DarkGray)),
-        Span::styled("⚰️", Style::default().fg(PUMPKIN_ORANGE)),
+        Span::styled("⚰️ ", Style::default().fg(PUMPKIN_ORANGE)),
         Span::styled("host ", Style::default().fg(Color::DarkGray)),
-        Span::styled("🏠", Style::default().fg(TOXIC_GREEN)),
+        Span::styled("🏠 ", Style::default().fg(TOXIC_GREEN)),
         Span::styled("local ", Style::default().fg(Color::DarkGray)),
-        Span::styled("🎃", Style::default().fg(PUMPKIN_ORANGE)),
+        Span::styled("🎃 ", Style::default().fg(PUMPKIN_ORANGE)),
         Span::styled("ext ", Style::default().fg(Color::DarkGray)),
-        Span::styled("👑", Style::default().fg(Color::Yellow)),
+        Span::styled("👑 ", Style::default().fg(Color::Yellow)),
         Span::styled("hot", Style::default().fg(Color::DarkGray)),
         Span::styled("]", Style::default().fg(Color::DarkGray)),
     ]))
