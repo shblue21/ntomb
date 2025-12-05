@@ -1,136 +1,323 @@
-# ntomb
+# ntomb – undead connections monitor
 
-A Linux terminal app that visualizes network connections for a specific process with a subtle Halloween theme.
+**A terminal TUI that visualizes network "undead" connections using graveyard and coffin metaphors**
 
-## Overview
+---
 
-ntomb is a process-centric network visualization tool that places a target process at the center and displays its network connections as a visual graph in the terminal. Unlike traditional tools like `netstat` or `ss` that show flat lists, ntomb makes it immediately clear which remote endpoints a process is communicating with.
+## Introduction
 
-**Target audience:** Linux SREs, security engineers, and backend developers debugging services.
+ntomb is a terminal-based monitoring tool that visualizes network connections on Linux systems in real-time. Unlike traditional tools like `netstat` and `ss` that display connections as flat lists, ntomb presents the relationship between hosts and endpoints intuitively through a **Halloween-themed graphical interface**.
 
-**Kiroween theme:** Coffins for processes, pumpkins for active connections, ghosts for TIME_WAIT states, and skulls for suspicious endpoints - all while maintaining professional readability.
+Network endpoints are arranged radially around a central coffin (⚰️), with different icons and colors representing connection states. While leveraging "undead" metaphors like zombie processes (💀), active connections (🎃), and fading connections (👻), ntomb maintains the **clarity and readability** needed by SREs and security engineers in production environments.
+
+**Kiroween Hackathon Entry:** This project was submitted to the KIRO AI Hackathon's "Resurrection" category, reimagining classic network tools as a modern TUI.
+
+---
 
 ## Features
 
-- **Process-centric visualization:** See all connections for a specific process
-- **Interactive TUI:** Navigate connections with keyboard shortcuts (keyboard-only, no mouse)
-- **Animated graphics:** Floating ghosts and smooth rendering with tview + tcell
-- **Connection state awareness:** Visual indicators for ESTABLISHED, LISTEN, TIME_WAIT, etc.
-- **Suspicious connection detection:** Flags unusual patterns (long-lived, high-port beaconing, etc.)
-- **Dual themes:** Default (professional) and Halloween (spooky but readable)
-- **Demo mode:** Run without system access for presentations and screenshots
-- **Circular layout:** Process at center with endpoints arranged radially
+### 🕸️ The Graveyard (Network Topology)
+- **Central HOST Coffin (⚰️)**: Displays current host or selected process at the center
+- **Radial Node Layout**: Endpoints arranged in 3 rings based on network zones (local/private/public)
+- **Braille Art Rendering**: Smooth curves using Canvas widget with Braille markers
+- **Connection State Visualization**: 
+  - 🎃 ESTABLISHED (active connections)
+  - 👻 TIME_WAIT (fading connections)
+  - 💀 CLOSE_WAIT (zombie connections)
+  - 👂 LISTEN (listening sockets)
+- **Legend Display**: Icon meanings shown as `[⚰️ host 🏠 local 🎃 ext 👑 hot]`
+- **Summary Statistics**: Real-time display of Endpoints, Listening, and Total counts
+
+### 🔮 Soul Inspector (Detail Panel)
+- **Target Information**: Detailed info for selected host/process
+  - TARGET: Name and icon
+  - ROLE: Server/client/public connection counts
+  - STATE: Active/listening connection status
+  - CONN: Total connection count and PID
+  - RISK: Suspicious connection detection (high-port, non-standard patterns)
+  - BPF: Refresh interval display
+- **Blockified Layout**: Information clearly organized by category
+
+### 📊 Traffic History (Last 60s)
+- **Real-time Activity Sparkline**: Visualizes network activity over the last 60 seconds
+- **Statistics Display**: Shows Avg/Peak activity scores
+- **Mode-specific Data**: Different data for Host mode (all connections) vs Process mode (selected process)
+
+### 📜 Open Sockets / 🌐 Active Connections
+- **Connection List**: All active connections in a scrollable list
+- **Process Information**: Owning process shown with `[name(pid)]` tag
+- **State-based Colors**: ESTABLISHED (green), LISTEN (white), TIME_WAIT (orange), CLOSE (red)
+- **Selection Highlight**: Currently selected connection highlighted with Deep Indigo background
+
+### 🎨 Kiroween Overdrive Mode
+- **Enhanced Halloween Theme**: Toggleable enhanced visual effects with 'H' key
+- **Animations**: Dynamic visual effects like pulse and zombie blinking (toggle with 'A' key)
+- **Adaptive Performance**: Automatically reduces animation complexity when connection count is high
+
+### ⌨️ Keyboard Navigation
+- **Intuitive Shortcuts**: Always displayed in the status bar at the bottom
+- **Mode Switching**: Toggle between Host mode ↔ Process mode with 'P' key
+- **Refresh Rate Control**: Real-time adjustment with '+'/'-' keys
+- **Panel Switching**: Move focus with Tab key
+
+### 🔧 .kiro-based Design
+- **Spec-driven Development**: Requirements, design, and tasks documented in `.kiro/specs/`
+- **Steering Guides**: Visual design, security domain, and coding style guides in `.kiro/steering/`
+- **MCP Integration**: Model Context Protocol server implementation in `ntomb_mcp/` (suspicious detection rules)
+
+---
+
+## Screenshots
+
+<!-- TODO: add main UI screenshot (Graveyard + Soul Inspector + Traffic History) -->
+
+<!-- TODO: add Host mode vs Process mode comparison -->
+
+<!-- TODO: add Kiroween Overdrive mode demo -->
+
+<!-- TODO: add suspicious connections detection demo -->
+
+---
 
 ## Installation
 
+### Requirements
+- **OS**: Linux (macOS는 제한적 지원)
+- **Rust**: 1.70 이상
+- **Dependencies**: 
+  - `netstat2` (크로스 플랫폼 소켓 정보)
+  - `sysinfo` (프로세스 정보)
+  - `ratatui` + `crossterm` (TUI 렌더링)
+
+### Build from Source
+
 ```bash
-# Clone the repository
+# 저장소 클론
 git clone https://github.com/yourusername/ntomb
 cd ntomb
 
-# Build
-go build -o ntomb cmd/ntomb/main.go
+# 빌드
+cargo build --release
 
-# Or install
-go install github.com/yourusername/ntomb/cmd/ntomb@latest
+# 실행
+./target/release/ntomb
 ```
+
+### Install via Cargo
+
+```bash
+cargo install --path .
+```
+
+---
 
 ## Usage
 
+### Basic Execution
+
 ```bash
-# Demo mode (no system access required)
-ntomb --demo
+# Run in Host mode (default)
+ntomb
 
-# Demo mode with Halloween theme
-ntomb --demo --theme=halloween
-
-# Inspect a specific process by PID (not yet implemented)
-ntomb --pid 1234
-
-# Inspect a process by name (not yet implemented)
-ntomb --process nginx
-
-# With verbose logging
-ntomb --demo --verbose
+# Focus on specific process (switch with 'P' key after launch)
+ntomb
+# → Select a connection and press 'P' key
 ```
 
-## Keyboard Shortcuts
+### Common Use Cases
 
-**Navigation:**
-- `↑/k` - Move selection up
-- `↓/j` - Move selection down
+1. **Finding Undead Connections on Local Development Machine**
+   - Run in Host mode to check TIME_WAIT and CLOSE_WAIT connections across the system
+   - Discover zombie processes or resource leak patterns
 
-**Actions:**
-- `r` - Refresh connection data
-- `h` or `?` - Show help screen
-- `q` or `ESC` - Quit application
+2. **Monitoring Network Activity of Specific Process**
+   - Select a suspicious connection and press 'P' key to focus on that process
+   - Analyze activity patterns over the last 60 seconds using Traffic History
 
-**Note:** ntomb is keyboard-only. No mouse support.
+3. **Detecting Security Anomalies**
+   - Check RISK line for suspicious connections (high-port, non-standard patterns)
+   - Discover unexpected connections to public IPs
 
-## Project Status
+4. **Network Debugging**
+   - Real-time monitoring of connection states between services
+   - Identify performance issues using latency-based ring layout
 
-**Current:** 
-- ✅ Demo mode with realistic fake data
-- ✅ tview + tcell based TUI with direct screen control
-- ✅ Animated floating ghosts (Halloween theme)
-- ✅ Circular network map layout
-- ✅ Keyboard navigation (j/k, arrows)
-- ✅ Connection details panel
-- ✅ Dual themes (default + Halloween)
+---
 
-**TODO:**
-- Implement real process scanning (`internal/process`)
-- Implement real connection scanning (`internal/netscan`)
-- Add connection state change detection
-- Add auto-refresh functionality
-- Add filtering and grouping logic
+## Interaction / Keybindings
 
-## Architecture
+| Key | Description |
+|-----|-------------|
+| `↑` / `↓` | Move up/down in connection list |
+| `Tab` | Switch panel (Graveyard ↔ Soul Inspector ↔ Grimoire) |
+| `P` | Toggle process focus (Host ↔ Process mode) |
+| `+` / `=` | Decrease refresh rate (increase interval) |
+| `-` / `_` | Increase refresh rate (decrease interval) |
+| `A` | Toggle animations (pulse, zombie blinking, etc.) |
+| `H` | Toggle Kiroween Overdrive mode (enhanced Halloween theme) |
+| `T` | Toggle endpoint labels (show/hide IP:port) |
+| `Q` / `Esc` | Quit |
+
+**Status Bar Indicators:**
+- `[A:ON/OFF]` - Animation state
+- `[H:ON/OFF]` - Overdrive mode state
+- `[t:ON/OFF]` - Label display state
+
+---
+
+## Architecture / Design
+
+### Core Components
+
+- **`src/net/mod.rs`**: Network connection scanning
+  - Cross-platform socket information collection using `netstat2` library
+  - TCP connection state parsing and Connection struct creation
+
+- **`src/procfs/mod.rs`**: Process mapping (Linux-only)
+  - Socket inode extraction by scanning `/proc/<pid>/fd/*`
+  - Process name reading from `/proc/<pid>/comm`
+  - Graceful handling of permission errors
+
+- **`src/app/mod.rs`**: Application state management
+  - `AppState`: Connection data, mode, settings, animation state
+  - `GraveyardMode`: Host / Process mode switching
+  - `RefreshConfig`: Dynamic refresh interval adjustment
+
+### UI Layer
+
+- **`src/ui/banner.rs`**: Header (title, tagline, global statistics)
+- **`src/ui/graveyard.rs`**: Network topology map
+  - Canvas widget + Braille markers
+  - Network zone-based ring layout (local/private/public)
+  - Coffin rendering and exclusion zone
+- **`src/ui/inspector.rs`**: Soul Inspector + Traffic History
+  - Blockified information layout
+  - Activity history display using Sparkline widget
+- **`src/ui/grimoire.rs`**: Connection list (Open Sockets / Active Connections)
+- **`src/ui/status_bar.rs`**: Bottom status bar (key bindings, toggle states)
+
+### Theme System
+
+- **`src/theme/mod.rs`**: Color palette definition
+  - Neon Purple, Pumpkin Orange, Blood Red, Toxic Green, Bone White
+  - Icon mapping for Overdrive mode
+
+### .kiro Spec Structure
 
 ```
-ntomb/
-├── cmd/ntomb/          # CLI entry point
-├── internal/
-│   ├── graph/          # Graph model (nodes, edges, types)
-│   ├── process/        # Process scanning (TODO)
-│   ├── netscan/        # Connection scanning (TODO)
-│   ├── theme/          # Visual themes (default, halloween)
-│   ├── tui/            # Bubble Tea TUI (model, view, update)
-│   └── demo/           # Demo mode with fake data
+.kiro/
+├── specs/
+│   ├── ui-skeleton/          # UI layout and interaction
+│   ├── process-focus/        # Process focus feature
+│   ├── configurable-refresh/ # Refresh rate control
+│   ├── graveyard-adaptive-layout/ # Adaptive layout
+│   ├── ntomb-graveyard-vfx/  # Visual effects and animations
+│   ├── network_map.yaml      # Network map configuration
+│   └── suspicious_detection.yaml # Suspicious connection detection rules
+└── steering/
+    ├── visual-design.md      # Color, layout, widget design guide
+    ├── security-domain.md    # Security principles, read-only, detection heuristics
+    └── ntomb-coding-style.md # Rust coding style, testing strategy
 ```
+
+---
+
+## Limitations / Roadmap
+
+### Current Limitations
+
+- **Linux Primary Support**: macOS has limited support (no procfs functionality)
+- **Root Privileges**: sudo required to view process information of other users
+- **Terminal Size**: Minimum 80x24 recommended; smaller sizes may break layout
+- **Actual Byte Transfer**: Currently displays connection activity score only (kB/s not supported)
+- **BPF Integration**: eBPF-based real-time packet capture not yet implemented
+
+### Planned Features
+
+- [ ] **Actual Byte Transfer Display**: `ss -i` parsing or eBPF integration
+- [ ] **Enhanced Suspicious Detection**: Expand `.kiro/specs/suspicious_detection.yaml` rules
+- [ ] **Full MCP Server Integration**: External tool integration via ntomb_mcp
+- [ ] **Filtering and Search**: Filter by specific IP, port, or process name
+- [ ] **Log Export**: Save connection history to JSON/CSV
+- [ ] **Plugin System**: Custom detection rules and visualization extensions
+
+---
 
 ## Development
 
-```bash
-# Run in demo mode
-go run cmd/ntomb/main.go --demo
+### Development Environment Setup
 
-# Run with Halloween theme
-go run cmd/ntomb/main.go --demo --theme=halloween
+```bash
+# Install dependencies
+cargo build
 
 # Run tests
-go test ./...
+cargo test
 
-# Format code
-go fmt ./...
+# Code formatting
+cargo fmt
 
-# Build release binary
-go build -ldflags="-s -w" -o ntomb cmd/ntomb/main.go
+# Linting
+cargo clippy
+
+# Release build (optimized + stripped)
+cargo build --release
 ```
 
-## Kiroween Hackathon
+### Testing Strategy
 
-This project is submitted to the Kiroween hackathon in the **Resurrection** category as a modern reimagining of classic network inspection tools like `netstat`, `ss`, `lsof`, and `iftop`.
+- **Unit Tests**: Located in `#[cfg(test)]` blocks within each module
+- **Property-Based Tests**: Using `proptest` (some planned for implementation)
+- **Integration Tests**: In `tests/` directory (to be added)
+
+### Code Structure Principles
+
+- **Read-only Principle**: Never modifies system state (security-domain.md)
+- **Graceful Degradation**: Elegantly handles permission errors, platform differences, etc.
+- **Clear Separation**: Distinct layers for data collection (net, procfs) / business logic (app) / UI (ui)
+
+---
+
+## Contributing
+
+ntomb is an open-source project and welcomes contributions!
+
+### Contribution Guidelines
+
+1. **Code Style**: Must pass `cargo fmt` and `cargo clippy`
+2. **Testing**: Add tests for new features
+3. **Documentation**: Write doc comments for public APIs
+4. **Issues/PRs**: Use GitHub Issues and Pull Requests
+
+### Post-Kiroween Hackathon
+
+While this project started as a hackathon entry, we plan to continue maintaining and improving it. Bug reports, feature suggestions, and code contributions are all welcome!
+
+---
 
 ## License
 
-MIT OR Apache-2.0
+MIT License
+
+Copyright (c) 2024 Kiroween Hackathon
+
+자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+
+---
 
 ## Credits
 
-Built with:
-- [tview](https://github.com/rivo/tview) - TUI framework with rich widgets
-- [tcell](https://github.com/gdamore/tcell) - Low-level terminal control
-- Kiro AI - Spec-driven development assistant
+**Built with:**
+- [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI 프레임워크
+- [Crossterm](https://github.com/crossterm-rs/crossterm) - 크로스 플랫폼 터미널 제어
+- [netstat2](https://github.com/zhongzc/netstat2) - 네트워크 소켓 정보 라이브러리
+- [sysinfo](https://github.com/GuillaumeGomez/sysinfo) - 시스템/프로세스 정보
+- [Kiro AI](https://kiro.ai) - 스펙 기반 개발 어시스턴트
 
-**Note:** Keyboard-only interface. No mouse support by design.
+**Inspired by:**
+- `netstat`, `ss`, `lsof`, `iftop` - 고전적인 네트워크 도구들
+- Halloween 🎃 - 언데드 메타포의 영감
+
+---
+
+**💀 "Revealing the unseen connections of the undead." 💀**
