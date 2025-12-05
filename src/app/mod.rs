@@ -102,8 +102,8 @@ impl AppState {
             running: true,
             selected_node: 0,
             selected_log: 0,
-            // Initialize with some baseline traffic values
-            traffic_history: vec![30; 60],
+            // Initialize with empty traffic history (will fill with real data)
+            traffic_history: vec![0; 60],
             pulse_phase: 0.0,
             zombie_blink: true,
             last_tick: now,
@@ -195,18 +195,78 @@ impl AppState {
         }
     }
 
-    /// Update traffic history with animated dummy data
+    /// Update traffic history based on real connection activity
+    /// 
+    /// Tracks actual connection activity metrics with natural variation:
+    /// - Number of ESTABLISHED connections (weighted heavily)
+    /// - Number of LISTEN sockets (weighted moderately)
+    /// - Active state connections (SYN, FIN, etc.)
+    /// - Adds subtle pulse variation for visual interest
+    /// 
+    /// This provides meaningful visualization without requiring BPF/eBPF
+    /// infrastructure for actual byte-level traffic monitoring.
     fn update_traffic_history(&mut self) {
         // Remove oldest value
         self.traffic_history.remove(0);
 
-        // Generate new value using sine wave for smooth animation
-        let t = self.tick_counter as f32 * 0.1;
-        let base_value = 50.0 + 40.0 * (t).sin();
+        // Get connections to analyze based on current mode
+        let conns_to_analyze: Vec<&Connection> = match self.graveyard_mode {
+            GraveyardMode::Process => {
+                // In Process mode, only count connections for selected process
+                if let Some(pid) = self.selected_process_pid {
+                    self.connections.iter()
+                        .filter(|c| c.pid == Some(pid))
+                        .collect()
+                } else {
+                    self.connections.iter().collect()
+                }
+            }
+            GraveyardMode::Host => {
+                // In Host mode, count all connections
+                self.connections.iter().collect()
+            }
+        };
 
-        // Add some variation
-        let variation = ((t * 2.3).sin() * 10.0) + ((t * 1.7).cos() * 5.0);
-        let new_value = (base_value + variation).clamp(10.0, 100.0) as u64;
+        // Calculate activity score based on real connection data
+        let established_count = conns_to_analyze.iter()
+            .filter(|c| c.state == crate::net::ConnectionState::Established)
+            .count();
+        
+        let listen_count = conns_to_analyze.iter()
+            .filter(|c| c.state == crate::net::ConnectionState::Listen)
+            .count();
+        
+        let active_states = conns_to_analyze.iter()
+            .filter(|c| matches!(c.state, 
+                crate::net::ConnectionState::SynSent |
+                crate::net::ConnectionState::SynRecv |
+                crate::net::ConnectionState::FinWait1 |
+                crate::net::ConnectionState::FinWait2 |
+                crate::net::ConnectionState::Closing
+            ))
+            .count();
+
+        // Calculate base activity score (0-100 scale)
+        // - Each ESTABLISHED connection contributes 5 points (max 50)
+        // - Each LISTEN socket contributes 2 points (max 20)
+        // - Each active state connection contributes 10 points (max 30)
+        let established_score = (established_count * 5).min(50) as i64;
+        let listen_score = (listen_count * 2).min(20) as i64;
+        let active_score = (active_states * 10).min(30) as i64;
+        
+        // Base activity level (minimum visibility)
+        let base_activity: i64 = if conns_to_analyze.is_empty() { 5 } else { 10 };
+        
+        // Calculate base value
+        let base_value = base_activity + established_score + listen_score + active_score;
+        
+        // Add natural variation using tick_counter for visual interest
+        // This creates a subtle "heartbeat" effect even when connections are stable
+        let t = self.tick_counter as f32 * 0.15;
+        let variation = ((t.sin() * 8.0) + (t * 1.7).cos() * 4.0) as i64;
+        
+        // Total score clamped to 5-100 (never fully empty for visibility)
+        let new_value = (base_value + variation).clamp(5, 100) as u64;
 
         // Add to history
         self.traffic_history.push(new_value);
