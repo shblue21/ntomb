@@ -1,0 +1,138 @@
+# Implementation Plan
+
+- [ ] 1. Create theme module structure
+  - [ ] 1.1 Create `src/theme/mod.rs` with color constants and re-exports
+    - Move NEON_PURPLE, PUMPKIN_ORANGE, BLOOD_RED, TOXIC_GREEN, BONE_WHITE from ui.rs
+    - Export color constants as public
+    - _Requirements: 2.1_
+  - [ ] 1.2 Create `src/theme/default.rs` with default theme functions
+    - Move get_normal_status_text() from ui.rs
+    - Move interpolate_color() from ui.rs
+    - Move get_refresh_color() from ui.rs
+    - _Requirements: 2.2_
+  - [ ] 1.3 Create `src/theme/overdrive.rs` with overdrive theme functions
+    - Move get_overdrive_icon() from ui.rs
+    - Move get_overdrive_status_text() from ui.rs
+    - Move get_stats_label() from ui.rs
+    - Move get_status_text() from ui.rs
+    - _Requirements: 2.3_
+  - [ ]* 1.4 Write property test for theme consistency
+    - **Property 1: Theme function consistency**
+    - **Validates: Requirements 2.4, 2.5**
+
+- [ ] 2. Checkpoint - Verify theme module
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 3. Create app module structure
+  - [ ] 3.1 Create `src/app/mod.rs` with AppState
+    - Move AppState struct and impl from app.rs
+    - Re-export config types
+    - _Requirements: 3.1_
+  - [ ] 3.2 Create `src/app/config.rs` with configuration structs
+    - Move GraveyardSettings from app.rs
+    - Move LatencyConfig from app.rs
+    - Move RefreshConfig from app.rs
+    - Move GraveyardMode enum from app.rs
+    - Move LatencyBucket enum from app.rs
+    - Move constants (MIN_REFRESH_MS, MAX_REFRESH_MS, etc.)
+    - _Requirements: 3.2_
+  - [ ] 3.3 Create `src/app/event.rs` with keyboard event handling
+    - Extract keyboard handling logic from main.rs
+    - Create handle_key_event() function
+    - _Requirements: 3.3, 3.4_
+  - [ ]* 3.4 Write property test for keyboard handler consistency
+    - **Property 2: Keyboard handler state consistency**
+    - **Validates: Requirements 6.2**
+
+- [ ] 4. Checkpoint - Verify app module
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 5. Create UI module structure
+  - [ ] 5.1 Create `src/ui/mod.rs` with main draw function
+    - Keep draw() function
+    - Add module declarations and re-exports
+    - _Requirements: 1.1_
+  - [ ] 5.2 Create `src/ui/banner.rs` with banner rendering
+    - Move render_banner() from ui.rs
+    - _Requirements: 1.2_
+  - [ ] 5.3 Create `src/ui/graveyard.rs` with network map rendering
+    - Move render_network_map() from ui.rs
+    - Move EndpointType enum and impl
+    - Move EndpointNode struct
+    - Move classify_endpoint(), classify_ipv4_private()
+    - Move is_heavy_talker()
+    - Move classify_latency()
+    - Move particle_position()
+    - Move draw_coffin_block(), draw_large_coffin(), draw_mini_coffin()
+    - Move draw_latency_rings()
+    - Move has_latency_data()
+    - Move calculate_endpoint_position()
+    - Move all graveyard-related constants
+    - _Requirements: 1.3_
+  - [ ] 5.4 Create `src/ui/inspector.rs` with soul inspector rendering
+    - Move render_soul_inspector() from ui.rs
+    - _Requirements: 1.4_
+  - [ ] 5.5 Create `src/ui/grimoire.rs` with grimoire rendering
+    - Move render_grimoire() from ui.rs
+    - _Requirements: 1.5_
+  - [ ] 5.6 Create `src/ui/status_bar.rs` with status bar rendering
+    - Move render_status_bar() from ui.rs
+    - Move build_toggle_indicators() from ui.rs
+    - _Requirements: 1.6_
+
+- [ ] 6. Checkpoint - Verify UI module
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 7. Simplify main.rs
+  - [ ] 7.1 Update main.rs to use new module structure
+    - Update mod declarations for new module paths
+    - Delegate event handling to app::event module
+    - Remove inline keyboard handling code
+    - _Requirements: 4.1, 4.2, 4.3_
+
+- [ ] 8. Migrate tests to respective modules
+  - [ ] 8.1 Move UI tests to ui/graveyard.rs
+    - Move endpoint classification tests
+    - Move latency classification tests
+    - Move heavy talker tests
+    - Move particle position tests
+    - Move endpoint position tests
+    - _Requirements: 5.1_
+  - [ ] 8.2 Move theme tests to theme/overdrive.rs
+    - Move get_overdrive_icon tests
+    - Move get_overdrive_status_text tests
+    - Move get_stats_label tests
+    - Move get_status_text tests
+    - _Requirements: 5.2_
+  - [ ] 8.3 Move app tests to app/mod.rs
+    - Move toggle persistence tests
+    - Move mode combination tests
+    - Move property-based mode toggle test
+    - _Requirements: 5.3_
+  - [ ]* 8.4 Write property test for overdrive icon consistency
+    - **Property 3: Overdrive mode icon consistency**
+    - **Validates: Requirements 6.4**
+
+- [ ] 9. Checkpoint - Verify all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 10. Clean up old files
+  - [ ] 10.1 Remove old src/app.rs file
+    - Delete after verifying app/ module works
+    - _Requirements: 6.1_
+  - [ ] 10.2 Remove old src/ui.rs file
+    - Delete after verifying ui/ module works
+    - _Requirements: 6.1_
+
+- [ ] 11. Final verification
+  - [ ] 11.1 Run cargo build and verify no errors
+    - _Requirements: 5.4, 6.1_
+  - [ ] 11.2 Run cargo test and verify all 46 tests pass
+    - _Requirements: 5.4_
+  - [ ] 11.3 Run cargo clippy and verify no warnings
+    - _Requirements: 6.1_
+  - [ ] 11.4 Verify main.rs is under 60 lines
+    - _Requirements: 4.3_
+
+- [ ] 12. Final Checkpoint
+  - Ensure all tests pass, ask the user if questions arise.
