@@ -597,14 +597,32 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
 
     f.render_widget(top_paragraph, inspector_chunks[0]);
 
-    // Sparkline for traffic history
+    // Calculate traffic history statistics
+    let traffic_avg = if app.traffic_history.is_empty() {
+        0.0
+    } else {
+        app.traffic_history.iter().sum::<u64>() as f64 / app.traffic_history.len() as f64
+    };
+    let traffic_peak = app.traffic_history.iter().max().copied().unwrap_or(0);
+    
+    // Sparkline for traffic history with Avg/Peak stats in title
     let sparkline = Sparkline::default()
         .block(
             Block::default()
-                .title(vec![Span::styled(
-                    " 📊 Traffic History (Last 60s) ",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                )])
+                .title(vec![
+                    Span::styled(
+                        " 📊 Activity ",
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("Avg:{:.0} ", traffic_avg),
+                        Style::default().fg(BONE_WHITE),
+                    ),
+                    Span::styled(
+                        format!("Peak:{} ", traffic_peak),
+                        Style::default().fg(PUMPKIN_ORANGE),
+                    ),
+                ])
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(NEON_PURPLE)),
