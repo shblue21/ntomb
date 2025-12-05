@@ -10,8 +10,6 @@ ntomb is a terminal-based monitoring tool that visualizes network connections on
 
 Network endpoints are arranged radially around a central coffin (⚰️), with different icons and colors representing connection states. While leveraging "undead" metaphors like zombie processes (💀), active connections (🎃), and fading connections (👻), ntomb maintains the **clarity and readability** needed by SREs and security engineers in production environments.
 
-**Kiroween Hackathon Entry:** This project was submitted to the KIRO AI Hackathon's "Resurrection" category, reimagining classic network tools as a modern TUI.
-
 ---
 
 ## Features
@@ -82,24 +80,24 @@ Network endpoints are arranged radially around a central coffin (⚰️), with d
 ## Installation
 
 ### Requirements
-- **OS**: Linux (macOS는 제한적 지원)
-- **Rust**: 1.70 이상
+- **OS**: Linux (macOS has limited support)
+- **Rust**: 1.70 or higher
 - **Dependencies**: 
-  - `netstat2` (크로스 플랫폼 소켓 정보)
-  - `sysinfo` (프로세스 정보)
-  - `ratatui` + `crossterm` (TUI 렌더링)
+  - `netstat2` (cross-platform socket information)
+  - `sysinfo` (process information)
+  - `ratatui` + `crossterm` (TUI rendering)
 
 ### Build from Source
 
 ```bash
-# 저장소 클론
+# Clone repository
 git clone https://github.com/yourusername/ntomb
 cd ntomb
 
-# 빌드
+# Build
 cargo build --release
 
-# 실행
+# Run
 ./target/release/ntomb
 ```
 
@@ -289,9 +287,7 @@ ntomb is an open-source project and welcomes contributions!
 3. **Documentation**: Write doc comments for public APIs
 4. **Issues/PRs**: Use GitHub Issues and Pull Requests
 
-### Post-Kiroween Hackathon
-
-While this project started as a hackathon entry, we plan to continue maintaining and improving it. Bug reports, feature suggestions, and code contributions are all welcome!
+Bug reports, feature suggestions, and code contributions are all welcome!
 
 ---
 
@@ -299,24 +295,22 @@ While this project started as a hackathon entry, we plan to continue maintaining
 
 MIT License
 
-Copyright (c) 2024 Kiroween Hackathon
-
-자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+See [LICENSE](LICENSE) file for details.
 
 ---
 
 ## Credits
 
 **Built with:**
-- [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI 프레임워크
-- [Crossterm](https://github.com/crossterm-rs/crossterm) - 크로스 플랫폼 터미널 제어
-- [netstat2](https://github.com/zhongzc/netstat2) - 네트워크 소켓 정보 라이브러리
-- [sysinfo](https://github.com/GuillaumeGomez/sysinfo) - 시스템/프로세스 정보
-- [Kiro AI](https://kiro.ai) - 스펙 기반 개발 어시스턴트
+- [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI framework
+- [Crossterm](https://github.com/crossterm-rs/crossterm) - Cross-platform terminal control
+- [netstat2](https://github.com/zhongzc/netstat2) - Network socket information library
+- [sysinfo](https://github.com/GuillaumeGomez/sysinfo) - System/process information
+- [Kiro AI](https://kiro.ai) - Spec-driven development assistant
 
 **Inspired by:**
-- `netstat`, `ss`, `lsof`, `iftop` - 고전적인 네트워크 도구들
-- Halloween 🎃 - 언데드 메타포의 영감
+- `netstat`, `ss`, `lsof`, `iftop` - Classic network tools
+- Halloween 🎃 - Inspiration for the undead metaphor
 
 ---
 
