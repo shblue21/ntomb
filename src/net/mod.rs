@@ -6,13 +6,14 @@ use netstat2::{
     get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState,
 };
 use std::io;
+use sysinfo::System;
 
 #[cfg(target_os = "linux")]
 use std::collections::HashMap;
 #[cfg(target_os = "linux")]
 use std::fs;
 #[cfg(target_os = "linux")]
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// TCP connection states
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -68,6 +69,9 @@ pub struct Connection {
 
 /// Collect TCP connections using netstat2
 /// Cross-platform, read-only operation, never modifies system state
+/// 
+/// Uses netstat2's associated_pids for process information on all platforms,
+/// and sysinfo to resolve PID to process name.
 pub fn collect_connections() -> io::Result<Vec<Connection>> {
     // Query both IPv4 and IPv6 TCP connections
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
@@ -79,21 +83,32 @@ pub fn collect_connections() -> io::Result<Vec<Connection>> {
         io::Error::other(format!("Cannot retrieve network sockets: {}", e))
     })?;
 
+    // Initialize sysinfo for process name lookup
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
     let mut connections = Vec::new();
 
     for socket_info in sockets {
         if let ProtocolSocketInfo::Tcp(tcp_info) = socket_info.protocol_socket_info {
+            // Get PID from netstat2's associated_pids (cross-platform!)
+            let pid = socket_info.associated_pids.first().map(|&p| p as i32);
+            
+            // Lookup process name using sysinfo
+            let process_name = pid.and_then(|p| {
+                let sysinfo_pid = sysinfo::Pid::from_u32(p as u32);
+                sys.process(sysinfo_pid).map(|proc| proc.name().to_string_lossy().to_string())
+            });
+
             connections.push(Connection {
                 local_addr: tcp_info.local_addr.to_string(),
                 local_port: tcp_info.local_port,
                 remote_addr: tcp_info.remote_addr.to_string(),
                 remote_port: tcp_info.remote_port,
                 state: ConnectionState::from(tcp_info.state),
-                // netstat2 doesn't provide inode directly, but we can add it later if needed
                 inode: None,
-                // Process info will be populated by procfs::attach_process_info() on Linux
-                pid: None,
-                process_name: None,
+                pid,
+                process_name,
             });
         }
     }
