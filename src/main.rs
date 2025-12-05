@@ -4,12 +4,13 @@
 mod app;
 mod net;
 mod procfs;
+mod theme;
 mod ui;
 
 use anyhow::Result;
-use app::AppState;
+use app::{event::handle_key_event, AppState};
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -35,85 +36,24 @@ fn main() -> Result<()> {
     if let Err(err) = res {
         println!("Error: {:?}", err);
     }
-
     Ok(())
 }
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<()> {
     let mut app = AppState::new();
-
     loop {
-        // Update app state (animations, traffic history, etc.)
         app.on_tick();
-        
-        // Update frame time tracking for performance monitoring (Requirement 6.5)
-        // This monitors frame time and auto-reduces animation complexity if needed
         app.update_frame_time();
-
-        // Draw the UI
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
-        // Check if app should exit
         if !app.running {
             return Ok(());
         }
 
-        // Use dynamic UI refresh interval from config
-        let tick_rate = app.refresh_config.ui_interval();
-
-        // Handle events with timeout
-        if event::poll(tick_rate)? {
+        if event::poll(app.refresh_config.ui_interval())? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    // Quit on 'q', 'Q', or Esc
-                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
-                        app.running = false;
-                    }
-                    // Navigate connections with arrow keys
-                    KeyCode::Up => {
-                        app.select_previous_connection();
-                    }
-                    KeyCode::Down => {
-                        app.select_next_connection();
-                    }
-                    // Toggle graveyard mode with 'p' key
-                    KeyCode::Char('p') | KeyCode::Char('P') => {
-                        app.toggle_graveyard_mode();
-                    }
-                    // Switch panel with Tab (placeholder for now)
-                    KeyCode::Tab => {
-                        app.switch_panel();
-                    }
-                    // Refresh rate controls (unified)
-                    KeyCode::Char('+') | KeyCode::Char('=') => {
-                        app.increase_refresh_rate();
-                    }
-                    KeyCode::Char('-') | KeyCode::Char('_') => {
-                        app.decrease_refresh_rate();
-                    }
-                    // Toggle animations (Requirements 2.4, 5.1)
-                    KeyCode::Char('a') | KeyCode::Char('A') => {
-                        app.graveyard_settings.animations_enabled =
-                            !app.graveyard_settings.animations_enabled;
-                        // Reset animation reduction when user manually toggles animations
-                        // This allows the system to try full animation complexity again
-                        app.reset_animation_reduction();
-                    }
-                    // Toggle Kiroween Overdrive mode (Requirements 4.1, 5.2)
-                    KeyCode::Char('h') | KeyCode::Char('H') => {
-                        app.graveyard_settings.overdrive_enabled =
-                            !app.graveyard_settings.overdrive_enabled;
-                    }
-                    // Toggle endpoint labels (Requirements 3.6, 5.3)
-                    KeyCode::Char('t') | KeyCode::Char('T') => {
-                        app.graveyard_settings.labels_enabled =
-                            !app.graveyard_settings.labels_enabled;
-                    }
-                    _ => {}
-                }
+                handle_key_event(&mut app, key.code);
             }
         }
     }
 }
-
-
