@@ -352,11 +352,13 @@ pub fn draw_coffin_block(
 ) {
     let (cx, cy) = HOST_CENTER;
     
-    // Coffin color: Bone White normally, Pumpkin Orange in overdrive mode
+    // Coffin color: Neon Purple normally, Pumpkin Orange in overdrive mode
+    // Using Neon Purple instead of Bone White for better visibility on both
+    // light and dark terminal backgrounds
     let coffin_color = if overdrive_enabled {
         PUMPKIN_ORANGE
     } else {
-        BONE_WHITE
+        NEON_PURPLE
     };
     
     // Truncate host name if too long (max 10 chars for display)
