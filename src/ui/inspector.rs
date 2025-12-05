@@ -49,10 +49,20 @@ pub struct SoulInspectorView {
     pub refresh_ms: u64,
     /// Number of connections for this target
     pub conn_count: usize,
+    /// Number of server (LISTEN) connections
+    pub server_count: usize,
+    /// Number of client (ESTABLISHED) connections
+    pub client_count: usize,
+    /// Number of public/external connections
+    pub public_count: usize,
     /// List of connections/sockets for this target
     pub sockets: Vec<SocketInfo>,
     /// Whether this target has suspicious activity
     pub suspicious: bool,
+    /// Number of suspicious connections
+    pub suspicious_count: usize,
+    /// Suspicious reasons (e.g., "high-port", "non-standard")
+    pub suspicious_reasons: Vec<String>,
     /// Tags for this target
     pub tags: Vec<String>,
     /// Whether a target is selected
@@ -83,8 +93,13 @@ impl Default for SoulInspectorView {
             state_color: BONE_WHITE,
             refresh_ms: 500,
             conn_count: 0,
+            server_count: 0,
+            client_count: 0,
+            public_count: 0,
             sockets: Vec::new(),
             suspicious: false,
+            suspicious_count: 0,
+            suspicious_reasons: Vec::new(),
             tags: Vec::new(),
             has_selection: false,
         }
@@ -142,7 +157,44 @@ fn build_host_view(view: &mut SoulInspectorView, connections: &[Connection]) {
     let listening = connections.iter().filter(|c| c.state == ConnectionState::Listen).count();
     let other = connections.len() - established - listening;
     
+    // Count public/external connections (non-RFC1918, non-localhost)
+    let public_count = connections.iter()
+        .filter(|c| is_public_ip(&c.remote_addr))
+        .count();
+    
     view.conn_count = connections.len();
+    view.server_count = listening;
+    view.client_count = established;
+    view.public_count = public_count;
+    
+    // Check for suspicious patterns across all connections
+    let mut suspicious_count = 0;
+    let mut suspicious_reasons: Vec<String> = Vec::new();
+    
+    for conn in connections {
+        if conn.remote_port > 49152 && conn.local_port > 49152 {
+            suspicious_count += 1;
+            if !suspicious_reasons.contains(&"high-port".to_string()) {
+                suspicious_reasons.push("high-port".to_string());
+            }
+        }
+        // Check for non-standard ports on established connections
+        let standard_ports = [80, 443, 22, 21, 25, 53, 110, 143, 993, 995, 3306, 5432, 6379, 27017];
+        if conn.state == ConnectionState::Established 
+            && !standard_ports.contains(&conn.remote_port) 
+            && conn.remote_port > 1024 
+            && is_public_ip(&conn.remote_addr)
+        {
+            suspicious_count += 1;
+            if !suspicious_reasons.contains(&"non-standard".to_string()) {
+                suspicious_reasons.push("non-standard".to_string());
+            }
+        }
+    }
+    
+    view.suspicious = suspicious_count > 0;
+    view.suspicious_count = suspicious_count;
+    view.suspicious_reasons = suspicious_reasons;
     
     // Determine overall state based on connection health
     if connections.is_empty() {
@@ -345,6 +397,37 @@ fn check_suspicious_patterns(view: &mut SoulInspectorView, conn: &Connection) {
     }
 }
 
+/// Check if an IP address is public (not localhost, not RFC1918 private)
+fn is_public_ip(addr: &str) -> bool {
+    // Localhost
+    if addr == "127.0.0.1" || addr == "::1" || addr == "0.0.0.0" || addr.starts_with("127.") {
+        return false;
+    }
+    
+    // RFC1918 private ranges
+    if addr.starts_with("10.") || addr.starts_with("192.168.") {
+        return false;
+    }
+    
+    // 172.16.0.0 - 172.31.255.255
+    if addr.starts_with("172.") {
+        if let Some(second_octet) = addr.split('.').nth(1) {
+            if let Ok(octet) = second_octet.parse::<u8>() {
+                if (16..=31).contains(&octet) {
+                    return false;
+                }
+            }
+        }
+    }
+    
+    // Link-local
+    if addr.starts_with("169.254.") || addr.starts_with("fe80:") {
+        return false;
+    }
+    
+    true
+}
+
 pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
     // Build view model from app state
     let view = build_soul_inspector_view(app);
@@ -387,36 +470,6 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
         overdrive_suffix
     );
 
-    // Build PID/PPID line
-    let pid_line = if let Some(pid) = view.pid {
-        Line::from(vec![
-            Span::raw("  PID: "),
-            Span::styled(pid.to_string(), Style::default().fg(Color::Cyan)),
-            Span::raw("  |  Conns: "),
-            Span::styled(view.conn_count.to_string(), Style::default().fg(Color::Gray)),
-        ])
-    } else {
-        Line::from(vec![
-            Span::raw("  Connections: "),
-            Span::styled(view.conn_count.to_string(), Style::default().fg(Color::Cyan)),
-        ])
-    };
-
-    // Build tags line if any
-    let tags_line = if !view.tags.is_empty() {
-        let tags_str = view.tags.iter()
-            .take(3)
-            .map(|t| format!("[{}]", t))
-            .collect::<Vec<_>>()
-            .join(" ");
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled(tags_str, Style::default().fg(Color::DarkGray)),
-        ])
-    } else {
-        Line::from("")
-    };
-
     // Suspicious indicator
     let suspicious_indicator = if view.suspicious {
         Span::styled(" ⚠️", Style::default().fg(BLOOD_RED).add_modifier(Modifier::BOLD))
@@ -424,11 +477,12 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
         Span::raw("")
     };
 
-    // Top section with process info
-    let top_content = vec![
-        Line::from(""),
+    // Top section with blockified layout for clear information hierarchy
+    // Format: TARGET / ROLE / STATE / CONN / RISK / BPF
+    let mut top_content = vec![
+        // TARGET line
         Line::from(vec![
-            Span::raw("  TARGET: "),
+            Span::styled("  TARGET: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 format!("{} {}", view.target_icon, view.target_name),
                 Style::default()
@@ -437,10 +491,25 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
             ),
             suspicious_indicator,
         ]),
-        pid_line,
-        tags_line,
+        // ROLE line - server/client breakdown
         Line::from(vec![
-            Span::raw("  STATE: "),
+            Span::styled("  ROLE:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("[server {}] ", view.server_count),
+                Style::default().fg(NEON_PURPLE),
+            ),
+            Span::styled(
+                format!("[client {}] ", view.client_count),
+                Style::default().fg(TOXIC_GREEN),
+            ),
+            Span::styled(
+                format!("[public {}]", view.public_count),
+                Style::default().fg(PUMPKIN_ORANGE),
+            ),
+        ]),
+        // STATE line
+        Line::from(vec![
+            Span::styled("  STATE:  ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 status_display,
                 Style::default()
@@ -448,15 +517,46 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(""),
+        // CONN line
         Line::from(vec![
-            Span::raw("  ⚡ Refresh: "),
+            Span::styled("  CONN:   ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                format!("{}ms", view.refresh_ms),
-                refresh_style,
+                format!("{} total", view.conn_count),
+                Style::default().fg(BONE_WHITE),
             ),
+            if let Some(pid) = view.pid {
+                Span::styled(format!("  (PID: {})", pid), Style::default().fg(Color::Cyan))
+            } else {
+                Span::raw("")
+            },
         ]),
     ];
+    
+    // RISK line - only show if suspicious activity detected
+    if view.suspicious {
+        let reasons = if view.suspicious_reasons.is_empty() {
+            "unknown".to_string()
+        } else {
+            view.suspicious_reasons.join(", ")
+        };
+        top_content.push(Line::from(vec![
+            Span::styled("  RISK:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled("🩸 ", Style::default().fg(BLOOD_RED)),
+            Span::styled(
+                format!("{} suspicious ({})", view.suspicious_count, reasons),
+                Style::default().fg(BLOOD_RED).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+    
+    // BPF line - refresh rate
+    top_content.push(Line::from(vec![
+        Span::styled("  BPF:    ", Style::default().fg(Color::DarkGray)),
+        Span::styled("ACTIVE ", Style::default().fg(TOXIC_GREEN)),
+        Span::styled("(", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("{}ms", view.refresh_ms), refresh_style),
+        Span::styled(")", Style::default().fg(Color::DarkGray)),
+    ]));
 
     // Title with suspicious warning if applicable
     let title_spans = if view.suspicious {
