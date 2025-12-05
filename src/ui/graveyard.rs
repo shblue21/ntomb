@@ -949,16 +949,27 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
         }
     };
 
-    // Summary line
+    // Summary line with legend
     let summary = Paragraph::new(Line::from(vec![
         Span::styled(" 📊 ", Style::default().fg(NEON_PURPLE)),
         Span::styled(
             format!(
-                "Endpoints: {} | Listening: {} | Total: {}",
+                "Endpoints: {} | Listening: {} | Total: {}  ",
                 endpoint_count, listen_count, filtered_connections.len()
             ),
             Style::default().fg(BONE_WHITE),
         ),
+        // Legend for icons
+        Span::styled("[", Style::default().fg(Color::DarkGray)),
+        Span::styled("⚰️", Style::default().fg(PUMPKIN_ORANGE)),
+        Span::styled("host ", Style::default().fg(Color::DarkGray)),
+        Span::styled("🏠", Style::default().fg(TOXIC_GREEN)),
+        Span::styled("local ", Style::default().fg(Color::DarkGray)),
+        Span::styled("🎃", Style::default().fg(PUMPKIN_ORANGE)),
+        Span::styled("ext ", Style::default().fg(Color::DarkGray)),
+        Span::styled("👑", Style::default().fg(Color::Yellow)),
+        Span::styled("hot", Style::default().fg(Color::DarkGray)),
+        Span::styled("]", Style::default().fg(Color::DarkGray)),
     ]))
     .block(
         Block::default()
