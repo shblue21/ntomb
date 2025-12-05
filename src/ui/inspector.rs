@@ -516,21 +516,15 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
     f.render_widget(sparkline, inspector_chunks[1]);
 
     // Bottom section with socket list - now using real data
-    let mut socket_lines = vec![
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            format!("  [📜 Open Sockets ({})]", view.sockets.len()),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )]),
-    ];
+    let mut socket_lines = vec![Line::from("")];
 
     if view.sockets.is_empty() {
         socket_lines.push(Line::from(vec![
             Span::styled(
                 "  (no sockets)",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
             ),
         ]));
     } else {
@@ -542,7 +536,7 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
                 ConnectionState::Close => BLOOD_RED,
                 _ => BONE_WHITE,
             };
-            
+
             let state_str = match socket.state {
                 ConnectionState::Established => "ESTABLISHED",
                 ConnectionState::Listen => "LISTEN",
@@ -564,24 +558,33 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
                 socket_lines.push(Line::from(vec![
                     Span::raw("  > "),
                     Span::styled(&socket.display, Style::default().fg(Color::Cyan)),
-                    Span::styled(format!(" ({})", state_str), Style::default().fg(state_color)),
+                    Span::styled(
+                        format!(" ({})", state_str),
+                        Style::default().fg(state_color),
+                    ),
                 ]));
             }
         }
-        
+
         // Show "and N more" if there are more sockets
         if view.conn_count > view.sockets.len() {
-            socket_lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  ... and {} more", view.conn_count - view.sockets.len()),
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-                ),
-            ]));
+            socket_lines.push(Line::from(vec![Span::styled(
+                format!("  ... and {} more", view.conn_count - view.sockets.len()),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            )]));
         }
     }
 
     let socket_paragraph = Paragraph::new(socket_lines).block(
         Block::default()
+            .title(vec![Span::styled(
+                format!(" 📜 Open Sockets ({}) ", view.sockets.len()),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )])
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(NEON_PURPLE)),
