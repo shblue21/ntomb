@@ -98,7 +98,7 @@ impl AppState {
     /// Create a new AppState with default values
     pub fn new() -> Self {
         let now = Instant::now();
-        Self {
+        let mut state = Self {
             running: true,
             selected_node: 0,
             selected_log: 0,
@@ -122,7 +122,12 @@ impl AppState {
             last_frame_time: now,
             slow_frame_count: 0,
             animation_reduced: false,
-        }
+        };
+        
+        // Perform initial data load immediately on startup
+        state.refresh_connections();
+        
+        state
     }
 
 
