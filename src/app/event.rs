@@ -53,12 +53,14 @@ pub fn handle_key_event(app: &mut AppState, key: KeyCode) -> bool {
             true
         }
         // Refresh rate controls (unified)
+        // + = slower refresh (increase interval)
+        // - = faster refresh (decrease interval)
         KeyCode::Char('+') | KeyCode::Char('=') => {
-            app.increase_refresh_rate();
+            app.decrease_refresh_rate();
             true
         }
         KeyCode::Char('-') | KeyCode::Char('_') => {
-            app.decrease_refresh_rate();
+            app.increase_refresh_rate();
             true
         }
         // Toggle animations (Requirements 2.4, 5.1)
