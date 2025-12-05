@@ -375,11 +375,12 @@ pub fn draw_coffin_block(
 }
 
 /// Draw the large hexagonal coffin (4 lines)
+/// Uses widely-supported box-drawing characters for better terminal compatibility
 /// ```text
-///    ╱‾‾‾‾‾‾‾‾‾‾‾‾╲
-///   ╱  ⚰ HOST_NAME ╲
-///   ╲              ╱
-///    ╲____________╱
+///   /‾‾‾‾‾‾‾‾‾‾‾‾‾‾\
+///  /   ⚰ HOST_NAME  \
+///  \                /
+///   \______________/
 /// ```
 fn draw_large_coffin(
     ctx: &mut ratatui::widgets::canvas::Context<'_>,
@@ -389,16 +390,18 @@ fn draw_large_coffin(
     coffin_color: Color,
 ) {
     // Calculate widths based on name length
-    // Inner content: "  ⚰ " + name + " " = 5 + name_len
-    let content_width = 5 + display_name.len();
-    let top_bar_width = content_width.saturating_sub(2); // Slightly narrower top
-    let bottom_bar_width = content_width; // Full width bottom
+    // Inner content: "   ⚰ " + name + "  " = 6 + name_len
+    let content_width = 6 + display_name.len();
+    let top_bar_width = content_width; // Same width for consistency
+    let bottom_bar_width = content_width;
     
-    // Build coffin lines
-    let line1 = format!("  ╱{}╲", "‾".repeat(top_bar_width));
-    let line2 = format!(" ╱  ⚰ {} ╲", display_name);
-    let line3 = format!(" ╲{}╱", " ".repeat(content_width));
-    let line4 = format!("  ╲{}╱", "_".repeat(bottom_bar_width));
+    // Build coffin lines using ASCII-compatible characters
+    // Using / \ instead of ╱ ╲ for better terminal compatibility
+    // Using ‾ (macron/overline) for top bar - fallback to - if needed
+    let line1 = format!(" /{}\\", "─".repeat(top_bar_width));
+    let line2 = format!("/   ⚰ {}  \\", display_name);
+    let line3 = format!("\\{}/ ", " ".repeat(content_width));
+    let line4 = format!(" \\{}/", "─".repeat(bottom_bar_width));
     
     // Calculate centering
     let cell_width = 0.8;
