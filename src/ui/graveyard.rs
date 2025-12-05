@@ -27,6 +27,34 @@ use std::collections::HashMap;
 // Inner ring (Low latency < 50ms), Middle ring (Medium 50-200ms), Outer ring (High > 200ms)
 const RING_RADII: [f64; 3] = [15.0, 25.0, 35.0];
 
+// ============================================================================
+// Adaptive Layout Constants (Requirements 1.1, 1.3, 1.4, 2.1)
+// ============================================================================
+
+/// Minimum canvas dimension (in canvas units) to enable adaptive layout
+/// Below this threshold, fixed radii are used for readability
+/// Requirements: 1.3
+const ADAPTIVE_THRESHOLD: f64 = 60.0;
+
+/// Ring ratio multipliers for adaptive scaling (Low:Medium:High approximately 4:6:9)
+/// These ratios are preserved when scaling adaptively to maintain visual hierarchy
+/// Increased from 0.30/0.50/0.70 to better utilize canvas space
+/// Requirements: 2.1
+const RING_RATIO_LOW: f64 = 0.45;
+const RING_RATIO_MEDIUM: f64 = 0.65;
+const RING_RATIO_HIGH: f64 = 0.90;
+
+/// Edge padding as percentage of available radius
+/// Prevents nodes from being clipped at canvas edges
+/// Reduced from 0.10 to allow more spread
+/// Requirements: 1.4
+const EDGE_PADDING_PERCENT: f64 = 0.05;
+
+/// Minimum edge padding in canvas units
+/// Ensures labels have space even on small canvases
+/// Requirements: 1.4
+const MIN_EDGE_PADDING: f64 = 5.0;
+
 // Center point of the HOST node in virtual canvas space
 const HOST_CENTER: (f64, f64) = (50.0, 50.0);
 
@@ -55,6 +83,109 @@ const REDUCED_PARTICLE_OFFSETS: [f32; 1] = [0.33];
 /// Below this threshold, the mini coffin (single line) is used
 const LARGE_COFFIN_MIN_HEIGHT: f64 = 50.0;
 
+// ============================================================================
+// Adaptive Layout Configuration (Requirements 1.1, 1.2, 2.1)
+// ============================================================================
+
+/// Layout configuration calculated from canvas dimensions
+///
+/// Contains the ring radii and other layout parameters that adapt
+/// to the available canvas space. When the canvas is large enough,
+/// rings scale proportionally to utilize the space. On smaller screens,
+/// fixed radii are used to maintain readability.
+///
+/// Requirements: 1.1, 1.2, 1.3, 2.1
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LayoutConfig {
+    /// Radius for Low latency ring (innermost)
+    pub ring_low: f64,
+    /// Radius for Medium latency ring (middle)
+    pub ring_medium: f64,
+    /// Radius for High latency ring (outermost)
+    pub ring_high: f64,
+    /// Minimum padding from canvas edges
+    pub edge_padding: f64,
+    /// Whether adaptive mode is active (vs fixed fallback)
+    pub is_adaptive: bool,
+}
+
+impl Default for LayoutConfig {
+    /// Returns the default fixed layout configuration
+    ///
+    /// Uses the default ring radii (15, 25, 35) with minimum edge padding.
+    /// This is the fallback for small canvases.
+    fn default() -> Self {
+        Self {
+            ring_low: RING_RADII[0],
+            ring_medium: RING_RADII[1],
+            ring_high: RING_RADII[2],
+            edge_padding: MIN_EDGE_PADDING,
+            is_adaptive: false,
+        }
+    }
+}
+
+/// Calculate layout configuration based on canvas dimensions
+///
+/// Determines whether to use adaptive scaling or fixed radii based on the
+/// canvas size. When the smaller dimension exceeds ADAPTIVE_THRESHOLD,
+/// ring radii scale proportionally to utilize available space. Otherwise,
+/// fixed radii are used to maintain readability on small screens.
+///
+/// # Arguments
+/// * `canvas_width` - Width of the canvas in canvas units (typically 100.0)
+/// * `canvas_height` - Height of the canvas in canvas units (scaled from terminal rows)
+///
+/// # Returns
+/// LayoutConfig with appropriate ring radii for the given dimensions
+///
+/// # Algorithm
+/// 1. Handle invalid dimensions (zero/negative) by returning default fixed layout
+/// 2. Calculate available radius from smaller dimension minus edge padding
+/// 3. If available radius is below threshold, use fixed radii
+/// 4. Otherwise, scale radii proportionally using RING_RATIO constants
+///
+/// Requirements: 1.1, 1.2, 1.3, 3.1
+pub fn calculate_layout_config(canvas_width: f64, canvas_height: f64) -> LayoutConfig {
+    // Handle invalid dimensions - fall back to default fixed layout
+    if canvas_width <= 0.0 || canvas_height <= 0.0 {
+        return LayoutConfig::default();
+    }
+
+    // Use the smaller dimension to determine maximum ring radius
+    // This prevents nodes from being clipped on non-square canvases
+    let smaller_dimension = canvas_width.min(canvas_height);
+
+    // Calculate edge padding (percentage of smaller dimension, with minimum)
+    let edge_padding = (smaller_dimension * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
+
+    // Calculate available radius (half of smaller dimension minus padding)
+    let available_radius = (smaller_dimension / 2.0) - edge_padding;
+
+    // Check if we should use adaptive mode
+    // Adaptive mode requires the smaller dimension to exceed the threshold
+    if smaller_dimension < ADAPTIVE_THRESHOLD {
+        // Below threshold: use fixed radii for readability
+        return LayoutConfig {
+            ring_low: RING_RADII[0],
+            ring_medium: RING_RADII[1],
+            ring_high: RING_RADII[2],
+            edge_padding,
+            is_adaptive: false,
+        };
+    }
+
+    // Adaptive mode: scale ring radii proportionally to available radius
+    // This maintains the visual hierarchy (Low < Medium < High) while
+    // utilizing the available canvas space
+    LayoutConfig {
+        ring_low: available_radius * RING_RATIO_LOW,
+        ring_medium: available_radius * RING_RATIO_MEDIUM,
+        ring_high: available_radius * RING_RATIO_HIGH,
+        edge_padding,
+        is_adaptive: true,
+    }
+}
 
 /// Classification of endpoint types for visual rendering
 /// 
@@ -422,18 +553,28 @@ fn draw_mini_coffin(
 /// Draw latency rings on the canvas around the HOST center
 /// 
 /// Draws 3 concentric dotted circles using Braille markers:
-/// - Inner ring (radius 15): Low latency endpoints (< 50ms)
-/// - Middle ring (radius 25): Medium latency endpoints (50-200ms)
-/// - Outer ring (radius 35): High latency endpoints (> 200ms)
+/// - Inner ring: Low latency endpoints (< 50ms)
+/// - Middle ring: Medium latency endpoints (50-200ms)
+/// - Outer ring: High latency endpoints (> 200ms)
 /// 
-/// Requirements: 1.1, 1.6
-pub fn draw_latency_rings<F>(ctx: &mut ratatui::widgets::canvas::Context<'_>, draw_point: F)
+/// Ring radii are determined by the provided LayoutConfig, enabling adaptive
+/// scaling based on canvas dimensions.
+/// 
+/// Requirements: 1.1, 2.1
+pub fn draw_latency_rings<F>(
+    ctx: &mut ratatui::widgets::canvas::Context<'_>,
+    layout: &LayoutConfig,
+    draw_point: F,
+)
 where
     F: Fn(&mut ratatui::widgets::canvas::Context<'_>, f64, f64, Style),
 {
     let (cx, cy) = HOST_CENTER;
     
-    for (ring_idx, radius) in RING_RADII.iter().enumerate() {
+    // Use adaptive ring radii from layout config
+    let ring_radii = [layout.ring_low, layout.ring_medium, layout.ring_high];
+    
+    for (ring_idx, radius) in ring_radii.iter().enumerate() {
         // Calculate opacity: inner ring is brightest, outer rings fade
         let opacity_factor = 1.0 - (ring_idx as f32 * 0.25);
         let r = (169.0 * opacity_factor) as u8;
@@ -448,8 +589,10 @@ where
             let x = cx + radius * angle_rad.cos();
             let y = cy + radius * angle_rad.sin();
             
-            // Ensure points stay within canvas bounds
-            if (0.0..=100.0).contains(&x) && (0.0..=100.0).contains(&y) {
+            // Ensure points stay within canvas bounds with padding
+            let min_bound = layout.edge_padding;
+            let max_bound = 100.0 - layout.edge_padding;
+            if x >= min_bound && x <= max_bound && y >= min_bound && y <= max_bound {
                 draw_point(ctx, x, y, ring_style);
             }
         }
@@ -469,21 +612,33 @@ pub fn has_latency_data(endpoints: &[EndpointNode]) -> bool {
 /// Calculate endpoint position on the canvas based on latency bucket
 /// 
 /// Positions endpoints on concentric rings around HOST_CENTER based on their latency.
+/// Uses the provided LayoutConfig to determine ring radii, enabling adaptive scaling
+/// based on canvas dimensions.
 /// 
-/// Requirements: 1.2, 1.3, 1.4, 1.5
+/// # Arguments
+/// * `endpoint_idx` - Index of this endpoint within its latency bucket
+/// * `total_in_bucket` - Total number of endpoints in the same bucket
+/// * `latency_bucket` - The latency classification for ring selection
+/// * `layout` - Layout configuration with calculated ring radii
+/// 
+/// # Returns
+/// (x, y) coordinates in canvas space, clamped to stay within bounds
+/// 
+/// Requirements: 1.2, 2.1, 2.3
 pub fn calculate_endpoint_position(
     endpoint_idx: usize,
     total_in_bucket: usize,
     latency_bucket: LatencyBucket,
+    layout: &LayoutConfig,
 ) -> (f64, f64) {
     let (cx, cy) = HOST_CENTER;
     
-    // Select ring radius based on latency bucket
+    // Select ring radius based on latency bucket using adaptive layout config
     let radius = match latency_bucket {
-        LatencyBucket::Low => RING_RADII[0],
-        LatencyBucket::Medium => RING_RADII[1],
-        LatencyBucket::High => RING_RADII[2],
-        LatencyBucket::Unknown => RING_RADII[1],
+        LatencyBucket::Low => layout.ring_low,
+        LatencyBucket::Medium => layout.ring_medium,
+        LatencyBucket::High => layout.ring_high,
+        LatencyBucket::Unknown => layout.ring_medium, // Default to medium ring
     };
     
     // Distribute endpoints evenly around the ring
@@ -498,8 +653,10 @@ pub fn calculate_endpoint_position(
     let x = cx + effective_radius * angle.cos();
     let y = cy + effective_radius * angle.sin();
     
-    // Clamp to canvas bounds with padding
-    (x.clamp(5.0, 95.0), y.clamp(5.0, 95.0))
+    // Clamp to canvas bounds with padding from layout config
+    let min_bound = layout.edge_padding;
+    let max_bound = 100.0 - layout.edge_padding;
+    (x.clamp(min_bound, max_bound), y.clamp(min_bound, max_bound))
 }
 
 
@@ -660,6 +817,28 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     let all_conn_counts: Vec<usize> = endpoint_data.iter().map(|(_, _, count, _, _)| *count).collect();
     
+    // Calculate adaptive layout configuration based on canvas dimensions
+    // Canvas uses virtual 0-100 coordinate space (x_bounds and y_bounds are [0, 100])
+    // We need to determine the effective canvas size based on terminal aspect ratio
+    // Terminal characters are ~2x taller than wide
+    // Requirements: 1.1, 1.2, 2.1, 3.1
+    let terminal_width = chunks[1].width as f64;
+    let terminal_height = chunks[1].height as f64;
+    // Calculate aspect ratio: how many "visual units" tall vs wide
+    // Since chars are ~2x tall, effective_height = terminal_height * 2
+    let effective_height = terminal_height * 2.0;
+    // Map to 0-100 canvas space while preserving aspect ratio
+    // If terminal is wider than tall (common), height becomes the limiting factor
+    let aspect_ratio = effective_height / terminal_width;
+    // Canvas is always 100x100 in coordinate space, but we use aspect ratio
+    // to determine the "effective" dimensions for layout calculation
+    let canvas_width = 100.0;
+    let canvas_height = 100.0 * aspect_ratio.min(1.0) + 100.0 * (1.0 - aspect_ratio.min(1.0)).max(0.0);
+    // Simpler approach: just use 100x100 but scale based on actual terminal size
+    // The key insight: larger terminals should spread nodes more
+    let scale_factor = (terminal_width.min(effective_height) / 60.0).max(1.0);
+    let layout_config = calculate_layout_config(100.0 * scale_factor, 100.0 * scale_factor);
+    
     // Count endpoints per latency bucket
     let mut bucket_counts: HashMap<LatencyBucket, usize> = HashMap::new();
     for (_, _, _, bucket, _) in &endpoint_data {
@@ -668,7 +847,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     
     let mut bucket_indices: HashMap<LatencyBucket, usize> = HashMap::new();
     
-    // Second pass: calculate positions
+    // Second pass: calculate positions using adaptive layout
     let nodes: Vec<EndpointNode> = endpoint_data
         .into_iter()
         .map(|(label, state, conn_count, latency_bucket, endpoint_type)| {
@@ -676,7 +855,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             let total_in_bucket = *bucket_counts.get(&latency_bucket).unwrap_or(&1);
             *bucket_indices.get_mut(&latency_bucket).unwrap() += 1;
             
-            let (x, y) = calculate_endpoint_position(idx_in_bucket, total_in_bucket, latency_bucket);
+            let (x, y) = calculate_endpoint_position(idx_in_bucket, total_in_bucket, latency_bucket, &layout_config);
             let is_heavy = is_heavy_talker(conn_count, &all_conn_counts);
 
             EndpointNode {
@@ -723,8 +902,9 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             let cy = 50.0;
             
             // Draw latency rings first (behind everything else)
+            // Uses adaptive layout config for ring radii
             if should_draw_rings {
-                draw_latency_rings(ctx, |ctx, x, y, style| {
+                draw_latency_rings(ctx, &layout_config, |ctx, x, y, style| {
                     ctx.print(x, y, Span::styled("·", style));
                 });
             }
@@ -1117,14 +1297,17 @@ mod tests {
 
     // ============================================================================
     // Test endpoint position calculation
-    // Requirements: 1.2, 1.3, 1.4, 1.5
+    // Requirements: 1.2, 2.1, 2.3
     // ============================================================================
 
     #[test]
     fn test_calculate_endpoint_position_ring_selection() {
-        let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low);
-        let (x_med, y_med) = calculate_endpoint_position(0, 1, LatencyBucket::Medium);
-        let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High);
+        // Use default layout config (fixed radii)
+        let layout = LayoutConfig::default();
+        
+        let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low, &layout);
+        let (x_med, y_med) = calculate_endpoint_position(0, 1, LatencyBucket::Medium, &layout);
+        let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High, &layout);
         
         let dist_low = ((x_low - 50.0).powi(2) + (y_low - 50.0).powi(2)).sqrt();
         let dist_med = ((x_med - 50.0).powi(2) + (y_med - 50.0).powi(2)).sqrt();
@@ -1136,8 +1319,11 @@ mod tests {
 
     #[test]
     fn test_calculate_endpoint_position_unknown_fallback() {
-        let (x_unknown, y_unknown) = calculate_endpoint_position(0, 1, LatencyBucket::Unknown);
-        let (x_medium, y_medium) = calculate_endpoint_position(0, 1, LatencyBucket::Medium);
+        // Use default layout config (fixed radii)
+        let layout = LayoutConfig::default();
+        
+        let (x_unknown, y_unknown) = calculate_endpoint_position(0, 1, LatencyBucket::Unknown, &layout);
+        let (x_medium, y_medium) = calculate_endpoint_position(0, 1, LatencyBucket::Medium, &layout);
         
         let dist_unknown = ((x_unknown - 50.0).powi(2) + (y_unknown - 50.0).powi(2)).sqrt();
         let dist_medium = ((x_medium - 50.0).powi(2) + (y_medium - 50.0).powi(2)).sqrt();
@@ -1147,13 +1333,48 @@ mod tests {
 
     #[test]
     fn test_calculate_endpoint_position_bounds() {
+        // Use default layout config (fixed radii)
+        let layout = LayoutConfig::default();
+        
         for i in 0..10 {
             for bucket in [LatencyBucket::Low, LatencyBucket::Medium, LatencyBucket::High] {
-                let (x, y) = calculate_endpoint_position(i, 10, bucket);
-                assert!(x >= 5.0 && x <= 95.0, "x={} out of bounds", x);
-                assert!(y >= 5.0 && y <= 95.0, "y={} out of bounds", y);
+                let (x, y) = calculate_endpoint_position(i, 10, bucket, &layout);
+                assert!(x >= layout.edge_padding && x <= 100.0 - layout.edge_padding, 
+                    "x={} out of bounds for padding={}", x, layout.edge_padding);
+                assert!(y >= layout.edge_padding && y <= 100.0 - layout.edge_padding, 
+                    "y={} out of bounds for padding={}", y, layout.edge_padding);
             }
         }
+    }
+    
+    #[test]
+    fn test_calculate_endpoint_position_with_adaptive_layout() {
+        // Test with adaptive layout (100x100 canvas - above threshold of 60)
+        let layout = calculate_layout_config(100.0, 100.0);
+        assert!(layout.is_adaptive, "Should be adaptive for 100x100 canvas");
+        
+        let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low, &layout);
+        let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High, &layout);
+        
+        let dist_low = ((x_low - 50.0).powi(2) + (y_low - 50.0).powi(2)).sqrt();
+        let dist_high = ((x_high - 50.0).powi(2) + (y_high - 50.0).powi(2)).sqrt();
+        
+        // For 100x100 canvas: available_radius = (100/2) - 10 = 40
+        // ring_low = 40 * 0.30 = 12, ring_high = 40 * 0.70 = 28
+        // Verify positions use the adaptive radii (with jitter tolerance)
+        assert!((dist_low - layout.ring_low).abs() < 3.0, 
+            "Low ring distance {} should be close to layout.ring_low {}", dist_low, layout.ring_low);
+        assert!((dist_high - layout.ring_high).abs() < 3.0, 
+            "High ring distance {} should be close to layout.ring_high {}", dist_high, layout.ring_high);
+        
+        // Verify ring ordering is preserved
+        assert!(dist_low < dist_high, "Low ring should be closer than high ring");
+        
+        // Verify ring ratios are preserved
+        let ratio = dist_low / dist_high;
+        let expected_ratio = 0.30 / 0.70;
+        assert!((ratio - expected_ratio).abs() < 0.15, 
+            "Ring ratio {} should be close to expected {}", ratio, expected_ratio);
     }
 
     #[test]
@@ -1188,5 +1409,172 @@ mod tests {
         
         let empty_nodes: Vec<EndpointNode> = vec![];
         assert!(!has_latency_data(&empty_nodes));
+    }
+
+    // ============================================================================
+    // Test calculate_layout_config edge cases
+    // Requirements: 1.3, 3.1
+    // ============================================================================
+
+    #[test]
+    fn test_calculate_layout_config_zero_dimensions() {
+        // Zero width should fall back to default fixed layout
+        let layout = calculate_layout_config(0.0, 100.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Zero height should fall back to default fixed layout
+        let layout = calculate_layout_config(100.0, 0.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Both zero should fall back to default fixed layout
+        let layout = calculate_layout_config(0.0, 0.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+    }
+
+    #[test]
+    fn test_calculate_layout_config_negative_dimensions() {
+        // Negative width should fall back to default fixed layout
+        let layout = calculate_layout_config(-50.0, 100.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Negative height should fall back to default fixed layout
+        let layout = calculate_layout_config(100.0, -50.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Both negative should fall back to default fixed layout
+        let layout = calculate_layout_config(-100.0, -100.0);
+        assert!(!layout.is_adaptive);
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+    }
+
+    #[test]
+    fn test_calculate_layout_config_boundary_at_threshold() {
+        // Just below threshold (60.0) - should use fixed layout
+        let layout = calculate_layout_config(59.9, 59.9);
+        assert!(!layout.is_adaptive, "Should use fixed layout below threshold");
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Exactly at threshold (60.0) - should use adaptive layout
+        let layout = calculate_layout_config(60.0, 60.0);
+        assert!(layout.is_adaptive, "Should use adaptive layout at threshold");
+        
+        // Just above threshold - should use adaptive layout
+        let layout = calculate_layout_config(60.1, 60.1);
+        assert!(layout.is_adaptive, "Should use adaptive layout above threshold");
+        
+        // One dimension at threshold, other above - smaller dimension determines mode
+        let layout = calculate_layout_config(60.0, 100.0);
+        assert!(layout.is_adaptive, "Should use adaptive when smaller dimension is at threshold");
+        
+        // One dimension below threshold, other above - smaller dimension determines mode
+        let layout = calculate_layout_config(59.0, 100.0);
+        assert!(!layout.is_adaptive, "Should use fixed when smaller dimension is below threshold");
+    }
+
+    #[test]
+    fn test_calculate_layout_config_extreme_aspect_ratios() {
+        // Very wide canvas (100:10 aspect ratio)
+        // Smaller dimension (10) is below threshold, should use fixed layout
+        let layout = calculate_layout_config(100.0, 10.0);
+        assert!(!layout.is_adaptive, "Very short canvas should use fixed layout");
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Very tall canvas (10:100 aspect ratio)
+        // Smaller dimension (10) is below threshold, should use fixed layout
+        let layout = calculate_layout_config(10.0, 100.0);
+        assert!(!layout.is_adaptive, "Very narrow canvas should use fixed layout");
+        assert_eq!(layout.ring_low, RING_RADII[0]);
+        assert_eq!(layout.ring_medium, RING_RADII[1]);
+        assert_eq!(layout.ring_high, RING_RADII[2]);
+        
+        // Wide canvas with smaller dimension above threshold (200:80)
+        let layout = calculate_layout_config(200.0, 80.0);
+        assert!(layout.is_adaptive, "Wide canvas with height above threshold should be adaptive");
+        // Available radius = 80/2 - (80*0.10) = 40 - 8 = 32
+        let expected_available_radius = 80.0 / 2.0 - (80.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
+        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
+        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
+        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
+        
+        // Tall canvas with smaller dimension above threshold (80:200)
+        let layout = calculate_layout_config(80.0, 200.0);
+        assert!(layout.is_adaptive, "Tall canvas with width above threshold should be adaptive");
+        // Available radius = 80/2 - (80*0.10) = 40 - 8 = 32
+        let expected_available_radius = 80.0 / 2.0 - (80.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
+        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
+        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
+        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_layout_config_edge_padding_minimum() {
+        // Small canvas where percentage padding would be less than MIN_EDGE_PADDING
+        // For 60x60 canvas: 60 * 0.10 = 6.0, which is > MIN_EDGE_PADDING (5.0)
+        let layout = calculate_layout_config(60.0, 60.0);
+        assert!(layout.edge_padding >= MIN_EDGE_PADDING, 
+            "Edge padding {} should be at least MIN_EDGE_PADDING {}", 
+            layout.edge_padding, MIN_EDGE_PADDING);
+        
+        // For very small canvas (below threshold), edge padding should still be calculated
+        let layout = calculate_layout_config(40.0, 40.0);
+        // 40 * 0.10 = 4.0, which is < MIN_EDGE_PADDING (5.0), so should use MIN_EDGE_PADDING
+        assert_eq!(layout.edge_padding, MIN_EDGE_PADDING,
+            "Edge padding should be MIN_EDGE_PADDING for small canvas");
+    }
+
+    #[test]
+    fn test_calculate_layout_config_ring_ratio_preservation() {
+        // Test that ring ratios are preserved in adaptive mode
+        let layout = calculate_layout_config(100.0, 100.0);
+        assert!(layout.is_adaptive);
+        
+        // Verify ratios match the constants
+        let available_radius = 100.0 / 2.0 - (100.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
+        assert!((layout.ring_low - available_radius * RING_RATIO_LOW).abs() < 0.001);
+        assert!((layout.ring_medium - available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
+        assert!((layout.ring_high - available_radius * RING_RATIO_HIGH).abs() < 0.001);
+        
+        // Verify ring ordering: low < medium < high
+        assert!(layout.ring_low < layout.ring_medium);
+        assert!(layout.ring_medium < layout.ring_high);
+    }
+
+    #[test]
+    fn test_calculate_layout_config_large_canvas() {
+        // Very large canvas (1000x1000)
+        let layout = calculate_layout_config(1000.0, 1000.0);
+        assert!(layout.is_adaptive);
+        
+        // Available radius = 1000/2 - (1000*0.10) = 500 - 100 = 400
+        let expected_available_radius = 1000.0 / 2.0 - (1000.0 * EDGE_PADDING_PERCENT).max(MIN_EDGE_PADDING);
+        assert!((layout.ring_low - expected_available_radius * RING_RATIO_LOW).abs() < 0.001);
+        assert!((layout.ring_medium - expected_available_radius * RING_RATIO_MEDIUM).abs() < 0.001);
+        assert!((layout.ring_high - expected_available_radius * RING_RATIO_HIGH).abs() < 0.001);
+        
+        // Verify rings are much larger than default fixed radii
+        assert!(layout.ring_low > RING_RADII[0]);
+        assert!(layout.ring_medium > RING_RADII[1]);
+        assert!(layout.ring_high > RING_RADII[2]);
     }
 }
