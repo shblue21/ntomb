@@ -28,10 +28,11 @@ use tracing::{debug, warn};
 /// * `Ok(())` on success or when running on non-Linux systems
 /// * `Err` only on critical failures (not permission errors)
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub fn attach_process_info(_conns: &mut [Connection]) -> io::Result<()> {
+pub fn attach_process_info(conns: &mut [Connection]) -> io::Result<()> {
     // Non-Linux systems: no-op
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = conns; // Suppress unused warning
         Ok(())
     }
 
