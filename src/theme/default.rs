@@ -7,8 +7,8 @@
 
 use ratatui::style::Color;
 
-use crate::net::ConnectionState;
 use super::{BLOOD_RED, PUMPKIN_ORANGE, TOXIC_GREEN};
+use crate::net::ConnectionState;
 
 /// Get the normal (non-overdrive) status text for a connection state
 ///

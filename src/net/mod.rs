@@ -2,9 +2,7 @@
 // Read-only operations following ntomb security-domain guidelines
 // Uses netstat2 for cross-platform network socket information
 
-use netstat2::{
-    get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState,
-};
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use std::io;
 use sysinfo::System;
 
@@ -69,7 +67,7 @@ pub struct Connection {
 
 /// Collect TCP connections using netstat2
 /// Cross-platform, read-only operation, never modifies system state
-/// 
+///
 /// Uses netstat2's associated_pids for process information on all platforms,
 /// and sysinfo to resolve PID to process name.
 pub fn collect_connections() -> io::Result<Vec<Connection>> {
@@ -93,11 +91,12 @@ pub fn collect_connections() -> io::Result<Vec<Connection>> {
         if let ProtocolSocketInfo::Tcp(tcp_info) = socket_info.protocol_socket_info {
             // Get PID from netstat2's associated_pids (cross-platform!)
             let pid = socket_info.associated_pids.first().map(|&p| p as i32);
-            
+
             // Lookup process name using sysinfo
             let process_name = pid.and_then(|p| {
                 let sysinfo_pid = sysinfo::Pid::from_u32(p as u32);
-                sys.process(sysinfo_pid).map(|proc| proc.name().to_string_lossy().to_string())
+                sys.process(sysinfo_pid)
+                    .map(|proc| proc.name().to_string_lossy().to_string())
             });
 
             connections.push(Connection {
@@ -186,10 +185,7 @@ fn parse_proc_net_tcp(
 
         // Parse inode (last field)
         if let Ok(inode) = parts[9].parse::<u64>() {
-            inode_map.insert(
-                (local_addr, local_port, remote_addr, remote_port),
-                inode,
-            );
+            inode_map.insert((local_addr, local_port, remote_addr, remote_port), inode);
         }
     }
 }
@@ -204,7 +200,7 @@ fn parse_hex_addr(hex: &str, is_ipv6: bool) -> String {
         if hex.len() != 32 {
             return "::".to_string();
         }
-        
+
         // Parse as 4 u32 values in little-endian
         let mut bytes = [0u8; 16];
         for i in 0..4 {
@@ -218,7 +214,7 @@ fn parse_hex_addr(hex: &str, is_ipv6: bool) -> String {
                 bytes[i * 4 + 3] = val_bytes[3];
             }
         }
-        
+
         let addr = Ipv6Addr::from(bytes);
         addr.to_string()
     } else {
@@ -226,7 +222,7 @@ fn parse_hex_addr(hex: &str, is_ipv6: bool) -> String {
         if hex.len() != 8 {
             return "0.0.0.0".to_string();
         }
-        
+
         if let Ok(val) = u32::from_str_radix(hex, 16) {
             let bytes = val.to_le_bytes();
             let addr = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
@@ -279,10 +275,10 @@ mod tests {
     fn test_parse_hex_addr_ipv4() {
         // Test localhost (127.0.0.1) in little-endian hex
         assert_eq!(parse_hex_addr("0100007F", false), "127.0.0.1");
-        
+
         // Test 0.0.0.0
         assert_eq!(parse_hex_addr("00000000", false), "0.0.0.0");
-        
+
         // Test 192.168.1.1 (0xC0A80101 in big-endian = 0x0101A8C0 in little-endian)
         assert_eq!(parse_hex_addr("0101A8C0", false), "192.168.1.1");
     }
@@ -295,7 +291,7 @@ mod tests {
             parse_hex_addr("00000000000000000000000001000000", true),
             "::1"
         );
-        
+
         // Test :: (all zeros)
         assert_eq!(
             parse_hex_addr("00000000000000000000000000000000", true),

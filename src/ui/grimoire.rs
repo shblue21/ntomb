@@ -49,7 +49,7 @@ pub fn render_grimoire(f: &mut Frame, area: Rect, app: &mut AppState) {
 
         // Check if this connection is selected
         let is_selected = app.selected_connection == Some(idx);
-        
+
         // Apply highlighting to selected connection
         let item_style = if is_selected {
             Style::default().bg(Color::Rgb(47, 51, 77)) // Deep Indigo background
@@ -57,15 +57,21 @@ pub fn render_grimoire(f: &mut Frame, area: Rect, app: &mut AppState) {
             Style::default()
         };
 
-        log_items.push(ListItem::new(Line::from(vec![
-            Span::styled(format!("{:2}.", idx + 1), Style::default().fg(Color::DarkGray)),
-            Span::styled(conn_line, Style::default().fg(state_color)),
-            Span::styled(process_tag, Style::default().fg(Color::Cyan)),
-        ])).style(item_style));
+        log_items.push(
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{:2}.", idx + 1),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(conn_line, Style::default().fg(state_color)),
+                Span::styled(process_tag, Style::default().fg(Color::Cyan)),
+            ]))
+            .style(item_style),
+        );
     }
 
     let title = format!("━ 🌐 Active Connections ({}) ", app.connections.len());
-    
+
     let logs = List::new(log_items)
         .block(
             Block::default()

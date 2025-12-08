@@ -14,8 +14,8 @@ pub use config::{
 
 use crate::net::{self, Connection};
 use config::{
-    BLINK_INTERVAL_MS, FRAME_TIME_THRESHOLD_MS, LOG_ENTRY_COUNT,
-    SLOW_FRAME_COUNT_THRESHOLD, TICK_INTERVAL_MS,
+    BLINK_INTERVAL_MS, FRAME_TIME_THRESHOLD_MS, LOG_ENTRY_COUNT, SLOW_FRAME_COUNT_THRESHOLD,
+    TICK_INTERVAL_MS,
 };
 use ratatui::widgets::ListState;
 use std::time::Instant;
@@ -123,13 +123,12 @@ impl AppState {
             slow_frame_count: 0,
             animation_reduced: false,
         };
-        
+
         // Perform initial data load immediately on startup
         state.refresh_connections();
-        
+
         state
     }
-
 
     /// Update state on each tick (called every ~100ms)
     pub fn on_tick(&mut self) {
@@ -201,13 +200,13 @@ impl AppState {
     }
 
     /// Update traffic history based on real connection activity
-    /// 
+    ///
     /// Tracks actual connection activity metrics with natural variation:
     /// - Number of ESTABLISHED connections (weighted heavily)
     /// - Number of LISTEN sockets (weighted moderately)
     /// - Active state connections (SYN, FIN, etc.)
     /// - Adds subtle pulse variation for visual interest
-    /// 
+    ///
     /// This provides meaningful visualization without requiring BPF/eBPF
     /// infrastructure for actual byte-level traffic monitoring.
     fn update_traffic_history(&mut self) {
@@ -219,7 +218,8 @@ impl AppState {
             GraveyardMode::Process => {
                 // In Process mode, only count connections for selected process
                 if let Some(pid) = self.selected_process_pid {
-                    self.connections.iter()
+                    self.connections
+                        .iter()
                         .filter(|c| c.pid == Some(pid))
                         .collect()
                 } else {
@@ -233,22 +233,28 @@ impl AppState {
         };
 
         // Calculate activity score based on real connection data
-        let established_count = conns_to_analyze.iter()
+        let established_count = conns_to_analyze
+            .iter()
             .filter(|c| c.state == crate::net::ConnectionState::Established)
             .count();
-        
-        let listen_count = conns_to_analyze.iter()
+
+        let listen_count = conns_to_analyze
+            .iter()
             .filter(|c| c.state == crate::net::ConnectionState::Listen)
             .count();
-        
-        let active_states = conns_to_analyze.iter()
-            .filter(|c| matches!(c.state, 
-                crate::net::ConnectionState::SynSent |
-                crate::net::ConnectionState::SynRecv |
-                crate::net::ConnectionState::FinWait1 |
-                crate::net::ConnectionState::FinWait2 |
-                crate::net::ConnectionState::Closing
-            ))
+
+        let active_states = conns_to_analyze
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c.state,
+                    crate::net::ConnectionState::SynSent
+                        | crate::net::ConnectionState::SynRecv
+                        | crate::net::ConnectionState::FinWait1
+                        | crate::net::ConnectionState::FinWait2
+                        | crate::net::ConnectionState::Closing
+                )
+            })
             .count();
 
         // Calculate base activity score (0-100 scale)
@@ -258,25 +264,24 @@ impl AppState {
         let established_score = (established_count * 5).min(50) as i64;
         let listen_score = (listen_count * 2).min(20) as i64;
         let active_score = (active_states * 10).min(30) as i64;
-        
+
         // Base activity level (minimum visibility)
         let base_activity: i64 = if conns_to_analyze.is_empty() { 5 } else { 10 };
-        
+
         // Calculate base value
         let base_value = base_activity + established_score + listen_score + active_score;
-        
+
         // Add natural variation using tick_counter for visual interest
         // This creates a subtle "heartbeat" effect even when connections are stable
         let t = self.tick_counter as f32 * 0.15;
         let variation = ((t.sin() * 8.0) + (t * 1.7).cos() * 4.0) as i64;
-        
+
         // Total score clamped to 5-100 (never fully empty for visibility)
         let new_value = (base_value + variation).clamp(5, 100) as u64;
 
         // Add to history
         self.traffic_history.push(new_value);
     }
-
 
     /// Move log selection up (decrease index)
     #[allow(dead_code)]
@@ -378,17 +383,22 @@ impl AppState {
         }
     }
 
-
     /// Increase refresh rate (decrease interval by 50ms, clamp to 50ms minimum)
     pub fn increase_refresh_rate(&mut self) {
-        let new_interval = self.refresh_config.refresh_ms.saturating_sub(config::REFRESH_STEP);
+        let new_interval = self
+            .refresh_config
+            .refresh_ms
+            .saturating_sub(config::REFRESH_STEP);
         self.refresh_config.refresh_ms = new_interval.max(config::MIN_REFRESH_MS);
         self.refresh_config.last_change = Some(Instant::now());
     }
 
     /// Decrease refresh rate (increase interval by 50ms, clamp to 1000ms maximum)
     pub fn decrease_refresh_rate(&mut self) {
-        let new_interval = self.refresh_config.refresh_ms.saturating_add(config::REFRESH_STEP);
+        let new_interval = self
+            .refresh_config
+            .refresh_ms
+            .saturating_add(config::REFRESH_STEP);
         self.refresh_config.refresh_ms = new_interval.min(config::MAX_REFRESH_MS);
         self.refresh_config.last_change = Some(Instant::now());
     }
@@ -443,7 +453,6 @@ impl Default for AppState {
         Self::new()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -501,7 +510,6 @@ mod tests {
             prop_assert_eq!(app.selected_process_pid, None);
         }
     }
-
 
     // ============================================================================
     // Task 24.1: Integration tests for toggle persistence
@@ -621,11 +629,13 @@ mod tests {
         app.graveyard_settings.labels_enabled = !initial_labels;
 
         // Verify changes are immediately reflected (no on_tick needed)
-        assert_eq!(app.graveyard_settings.animations_enabled, !initial_animations);
+        assert_eq!(
+            app.graveyard_settings.animations_enabled,
+            !initial_animations
+        );
         assert_eq!(app.graveyard_settings.overdrive_enabled, !initial_overdrive);
         assert_eq!(app.graveyard_settings.labels_enabled, !initial_labels);
     }
-
 
     // ============================================================================
     // Task 24.2: Integration tests for mode combinations
@@ -768,7 +778,6 @@ mod tests {
         assert_eq!(app.connections.len(), 2);
     }
 
-
     #[test]
     fn test_mode_switch_preserves_toggle_settings() {
         // Test that switching between Host and Process mode preserves toggle settings
@@ -820,7 +829,7 @@ mod tests {
         // Clear any connections loaded during initialization
         app.connections.clear();
         app.selected_connection = None;
-        
+
         app.select_next_connection();
         assert_eq!(app.selected_connection, None);
         app.select_previous_connection();

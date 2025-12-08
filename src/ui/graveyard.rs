@@ -103,28 +103,26 @@ impl Default for LayoutConfig {
     }
 }
 
-
-
 /// Classification of endpoint types for visual rendering
-/// 
+///
 /// Determines the icon and color used to display endpoints in the Graveyard
 /// based on their IP address characteristics.
-/// 
+///
 /// Requirements: 3.1, 3.2, 3.3, 3.5
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EndpointType {
     /// Local loopback connections (127.0.0.1, ::1, 0.0.0.0)
     /// Icon: ⚰️, Color: Toxic Green
     Localhost,
-    
+
     /// RFC1918 private IP addresses (10.x, 172.16-31.x, 192.168.x)
     /// Icon: 🪦, Color: Bone White
     Private,
-    
+
     /// Public/external IP addresses (all non-private, non-localhost)
     /// Icon: 🎃, Color: Pumpkin Orange
     Public,
-    
+
     /// Local server sockets in LISTEN state (no remote connection)
     /// Icon: 🕯, Color: Neon Purple
     ListenOnly,
@@ -132,9 +130,9 @@ pub enum EndpointType {
 
 impl EndpointType {
     /// Get the icon for this endpoint type
-    /// 
+    ///
     /// Returns the appropriate Halloween-themed emoji icon based on endpoint classification.
-    /// 
+    ///
     /// Requirements: 3.1, 3.2, 3.3, 3.5
     pub fn icon(&self) -> &'static str {
         match self {
@@ -144,11 +142,11 @@ impl EndpointType {
             Self::ListenOnly => "🕯",
         }
     }
-    
+
     /// Get the primary color for this endpoint type
-    /// 
+    ///
     /// Returns the color from the approved palette for visual consistency.
-    /// 
+    ///
     /// Requirements: 3.1, 3.2, 3.3, 3.5
     pub fn color(&self) -> Color {
         match self {
@@ -158,18 +156,18 @@ impl EndpointType {
             Self::ListenOnly => NEON_PURPLE,
         }
     }
-    
+
     /// Get the icon with optional heavy talker badge
-    /// 
+    ///
     /// Returns the endpoint type icon with "👑" appended if the endpoint
     /// is a heavy talker (top 5 by connection count).
-    /// 
+    ///
     /// # Arguments
     /// * `is_heavy_talker` - Whether this endpoint is in the top 5 by connection count
-    /// 
+    ///
     /// # Returns
     /// A String containing the icon, with "👑" badge appended for heavy talkers
-    /// 
+    ///
     /// Requirements: 3.4
     pub fn icon_with_badge(&self, is_heavy_talker: bool) -> String {
         let base_icon = self.icon();
@@ -182,20 +180,20 @@ impl EndpointType {
 }
 
 /// Classify an endpoint IP address into an EndpointType
-/// 
+///
 /// Classification logic:
 /// 1. Localhost: 127.0.0.1, ::1, or 0.0.0.0
 /// 2. Private: RFC1918 ranges (10.x, 172.16-31.x, 192.168.x)
 /// 3. ListenOnly: When remote address is 0.0.0.0:0 (LISTEN socket)
 /// 4. Public: All other IP addresses
-/// 
+///
 /// # Arguments
 /// * `ip` - The IP address string to classify
 /// * `is_listen_socket` - True if this is a LISTEN-only socket (remote = 0.0.0.0:0)
-/// 
+///
 /// # Returns
 /// The appropriate EndpointType classification
-/// 
+///
 /// Requirements: 3.1, 3.2, 3.3, 3.5
 pub fn classify_endpoint(ip: &str, is_listen_socket: bool) -> EndpointType {
     // Check for LISTEN-only sockets first (remote = 0.0.0.0:0)
@@ -203,30 +201,30 @@ pub fn classify_endpoint(ip: &str, is_listen_socket: bool) -> EndpointType {
     if is_listen_socket {
         return EndpointType::ListenOnly;
     }
-    
+
     // Check for localhost addresses
     // Includes IPv4 loopback (127.0.0.1), IPv6 loopback (::1), and wildcard (0.0.0.0)
     if ip == "127.0.0.1" || ip == "::1" || ip == "0.0.0.0" {
         return EndpointType::Localhost;
     }
-    
+
     // Check for RFC1918 private IP ranges
     // Parse as IPv4 and check against private ranges
     if let Some(endpoint_type) = classify_ipv4_private(ip) {
         return endpoint_type;
     }
-    
+
     // Default to Public for all other addresses
     EndpointType::Public
 }
 
 /// Helper function to classify IPv4 addresses against RFC1918 private ranges
-/// 
+///
 /// RFC1918 private ranges:
 /// - 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
 /// - 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
 /// - 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
-/// 
+///
 /// Returns Some(EndpointType::Private) if the IP is in a private range,
 /// None otherwise.
 fn classify_ipv4_private(ip: &str) -> Option<EndpointType> {
@@ -235,64 +233,61 @@ fn classify_ipv4_private(ip: &str) -> Option<EndpointType> {
     if parts.len() != 4 {
         return None; // Not a valid IPv4 address
     }
-    
+
     // Parse each octet
-    let octets: Vec<u8> = parts
-        .iter()
-        .filter_map(|p| p.parse::<u8>().ok())
-        .collect();
-    
+    let octets: Vec<u8> = parts.iter().filter_map(|p| p.parse::<u8>().ok()).collect();
+
     if octets.len() != 4 {
         return None; // Failed to parse all octets
     }
-    
+
     // Check RFC1918 private ranges
-    
+
     // 10.0.0.0/8 - Class A private network
     if octets[0] == 10 {
         return Some(EndpointType::Private);
     }
-    
+
     // 172.16.0.0/12 - Class B private network (172.16.x.x - 172.31.x.x)
     if octets[0] == 172 && (16..=31).contains(&octets[1]) {
         return Some(EndpointType::Private);
     }
-    
+
     // 192.168.0.0/16 - Class C private network
     if octets[0] == 192 && octets[1] == 168 {
         return Some(EndpointType::Private);
     }
-    
+
     None
 }
 
 /// Determine if an endpoint is a "heavy talker" based on connection count
-/// 
+///
 /// An endpoint is considered a heavy talker if its connection count is in the
 /// top 5 among all endpoints. This helps identify endpoints with unusually
 /// high activity that may warrant investigation.
-/// 
+///
 /// # Arguments
 /// * `conn_count` - The connection count for the endpoint being checked
 /// * `all_counts` - A slice of all endpoint connection counts for comparison
-/// 
+///
 /// # Returns
 /// `true` if the endpoint is in the top 5 by connection count, `false` otherwise
-/// 
+///
 /// # Edge Cases
 /// - If there are fewer than 5 endpoints, all endpoints are considered heavy talkers
 /// - If multiple endpoints have the same count as the 5th highest, all are included
-/// 
+///
 /// Requirements: 3.4
 pub fn is_heavy_talker(conn_count: usize, all_counts: &[usize]) -> bool {
     if all_counts.is_empty() {
         return false;
     }
-    
+
     // Sort counts in descending order to find top 5
     let mut sorted = all_counts.to_vec();
     sorted.sort_by(|a, b| b.cmp(a));
-    
+
     // Determine the threshold for top 5
     // If fewer than 5 endpoints, use the minimum count (all are heavy talkers)
     let threshold = if sorted.len() >= 5 {
@@ -301,19 +296,19 @@ pub fn is_heavy_talker(conn_count: usize, all_counts: &[usize]) -> bool {
         // Fewer than 5 endpoints - use the lowest count
         *sorted.last().unwrap_or(&0)
     };
-    
+
     // An endpoint is a heavy talker if its count >= threshold
     conn_count >= threshold && conn_count > 0
 }
 
 /// Classify latency into buckets for ring positioning
-/// 
+///
 /// Maps latency values to LatencyBucket based on configured thresholds:
 /// - Low: < low_threshold_ms (default 50ms) - innermost ring
 /// - Medium: low_threshold_ms to high_threshold_ms (default 50-200ms) - middle ring
 /// - High: > high_threshold_ms (default 200ms) - outermost ring
 /// - Unknown: No latency data available - use default position
-/// 
+///
 /// Requirements: 1.2, 1.3, 1.4, 1.5
 pub fn classify_latency(latency_ms: Option<u64>, config: &LatencyConfig) -> LatencyBucket {
     match latency_ms {
@@ -330,23 +325,22 @@ pub fn classify_latency(latency_ms: Option<u64>, config: &LatencyConfig) -> Late
     }
 }
 
-
 /// Calculate particle position along an edge for spirit flow animation
-/// 
+///
 /// Uses linear interpolation to position a particle along the line segment
 /// from `start` to `end`. The position is determined by combining the
 /// `pulse_phase` (animation time 0.0-1.0) with a particle `offset` to
 /// create multiple evenly-spaced particles moving along the edge.
-/// 
+///
 /// # Arguments
 /// * `start` - Starting point (x, y) of the edge (typically HOST_CENTER)
 /// * `end` - Ending point (x, y) of the edge (endpoint position)
 /// * `pulse_phase` - Current animation phase (0.0 to 1.0, cycles over time)
 /// * `offset` - Particle offset along the edge (0.0, 0.33, 0.66 for 3 particles)
-/// 
+///
 /// # Returns
 /// (x, y) coordinates of the particle position in canvas space
-/// 
+///
 /// Requirements: 2.2
 pub fn particle_position(
     start: (f64, f64),
@@ -357,11 +351,11 @@ pub fn particle_position(
     // Calculate parametric position t along the edge (0.0 to 1.0)
     // Wrapping with modulo ensures smooth cycling animation
     let t = ((pulse_phase + offset) % 1.0) as f64;
-    
+
     // Linear interpolation between start and end points
     let x = start.0 + (end.0 - start.0) * t;
     let y = start.1 + (end.1 - start.1) * t;
-    
+
     (x, y)
 }
 
@@ -394,10 +388,10 @@ pub fn particle_position(
 /// - Line 3: Bottom base (14 chars)
 /// - Total width: 14 characters per line (ALL LINES MUST BE EXACTLY 14 CHARS)
 const LARGE_COFFIN_TEMPLATE: [&str; 4] = [
-    "   /‾‾‾‾‾‾\\   ",  // Line 0: 14 chars (3 + / + 6 + \ + 3)
-    "  / HOST__ \\  ",   // Line 1: 14 chars (2 + / + 1 + HOST__ + 1 + \ + 2)
-    "  \\        /  ",   // Line 2: 14 chars (2 + \ + 8 + / + 2)
-    "   \\______/   ",   // Line 3: 14 chars (3 + \ + 6 + / + 3)
+    "   /‾‾‾‾‾‾\\   ", // Line 0: 14 chars (3 + / + 6 + \ + 3)
+    "  / HOST__ \\  ", // Line 1: 14 chars (2 + / + 1 + HOST__ + 1 + \ + 2)
+    "  \\        /  ", // Line 2: 14 chars (2 + \ + 8 + / + 2)
+    "   \\______/   ", // Line 3: 14 chars (3 + \ + 6 + / + 3)
 ];
 
 /// Large coffin dimensions (characters)
@@ -423,9 +417,9 @@ const LARGE_COFFIN_PLACEHOLDER: &str = "HOST__";
 /// - Line 2: Bottom base (11 chars)
 /// - Total width: 11 characters per line (ALL LINES MUST BE EXACTLY 11 CHARS)
 const MID_COFFIN_TEMPLATE: [&str; 3] = [
-    " /‾‾‾‾‾‾\\  ",    // Line 0: 11 chars (1 + / + 6 macrons + \ + 2)
-    "/ HOST__ \\ ",    // Line 1: 11 chars (/ + 1 + HOST__ + 1 + \ + 1)
-    " \\______/  ",    // Line 2: 11 chars (1 + \ + 6 + / + 2)
+    " /‾‾‾‾‾‾\\  ", // Line 0: 11 chars (1 + / + 6 macrons + \ + 2)
+    "/ HOST__ \\ ", // Line 1: 11 chars (/ + 1 + HOST__ + 1 + \ + 1)
+    " \\______/  ", // Line 2: 11 chars (1 + \ + 6 + / + 2)
 ];
 
 /// Mid coffin dimensions (characters)
@@ -466,8 +460,6 @@ pub struct CoffinRender {
     /// Height in lines
     pub height: usize,
 }
-
-
 
 /// Truncate host name to fit within max_len, adding ".." suffix if needed
 ///
@@ -518,7 +510,7 @@ fn center_pad(s: &str, width: usize) -> String {
 pub fn build_large_coffin(host: &str) -> CoffinRender {
     let display_name = truncate_host_name(host, LARGE_COFFIN_MAX_NAME);
     let padded_name = center_pad(&display_name, LARGE_COFFIN_MAX_NAME);
-    
+
     // Replace "HOST__" placeholder (6 chars) with padded hostname (6 chars)
     // This maintains exact line width
     let lines: Vec<String> = LARGE_COFFIN_TEMPLATE
@@ -531,7 +523,7 @@ pub fn build_large_coffin(host: &str) -> CoffinRender {
             }
         })
         .collect();
-    
+
     CoffinRender {
         lines,
         variant: CoffinVariant::Large,
@@ -553,7 +545,7 @@ pub fn build_large_coffin(host: &str) -> CoffinRender {
 pub fn build_mid_coffin(host: &str) -> CoffinRender {
     let display_name = truncate_host_name(host, MID_COFFIN_MAX_NAME);
     let padded_name = center_pad(&display_name, MID_COFFIN_MAX_NAME);
-    
+
     // Replace "HOST__" placeholder (6 chars) with padded hostname (6 chars)
     // This maintains exact line width
     let lines: Vec<String> = MID_COFFIN_TEMPLATE
@@ -566,7 +558,7 @@ pub fn build_mid_coffin(host: &str) -> CoffinRender {
             }
         })
         .collect();
-    
+
     CoffinRender {
         lines,
         variant: CoffinVariant::Mid,
@@ -593,7 +585,7 @@ pub fn build_label_coffin(host: &str, max_width: usize) -> CoffinRender {
     let display_name = truncate_host_name(host, available.max(3));
     let line = format!("[⚰ {}]", display_name);
     let width = line.chars().count();
-    
+
     CoffinRender {
         lines: vec![line],
         variant: CoffinVariant::Label,
@@ -628,19 +620,19 @@ pub fn choose_coffin_variant(area_width: f64, area_height: f64, host: &str) -> C
     // Terminal cells are typically ~2:1 aspect ratio (taller than wide)
     let char_width = (area_width / 1.0) as usize;
     let char_height = (area_height / 4.0) as usize;
-    
+
     // Try Large coffin first (5 lines, 14 chars wide)
     // Requires: width >= 14, height >= 5
     if char_width >= LARGE_COFFIN_WIDTH && char_height >= LARGE_COFFIN_HEIGHT {
         return build_large_coffin(host);
     }
-    
+
     // Try Mid coffin (3 lines, 11 chars wide)
     // Requires: width >= 11, height >= 3
     if char_width >= MID_COFFIN_WIDTH && char_height >= MID_COFFIN_HEIGHT {
         return build_mid_coffin(host);
     }
-    
+
     // Fallback to Label (1 line, minimum 10 chars for readability)
     build_label_coffin(host, char_width.max(10))
 }
@@ -659,9 +651,9 @@ pub fn coffin_exclusion_radius(variant: CoffinVariant) -> f64 {
     // Increased exclusion zones to ensure coffin stands out clearly
     // with at least 1-2 lines of empty space around it
     match variant {
-        CoffinVariant::Large => 20.0,  // 4-line coffin needs larger exclusion (was 15)
-        CoffinVariant::Mid => 16.0,    // 3-line coffin (was 12)
-        CoffinVariant::Label => 10.0,  // 1-line label (was 8)
+        CoffinVariant::Large => 20.0, // 4-line coffin needs larger exclusion (was 15)
+        CoffinVariant::Mid => 16.0,   // 3-line coffin (was 12)
+        CoffinVariant::Label => 10.0, // 1-line label (was 8)
     }
 }
 
@@ -692,20 +684,22 @@ pub fn draw_coffin_block(
     center_y: f64,
 ) -> CoffinVariant {
     let (cx, cy) = (center_x, center_y);
-    
+
     // Coffin color: Neon Purple normally, Pumpkin Orange in overdrive mode
     let coffin_color = if overdrive_enabled {
         PUMPKIN_ORANGE
     } else {
         NEON_PURPLE
     };
-    
+
     // Choose coffin variant based on canvas size (100x100 virtual space)
     let coffin = choose_coffin_variant(100.0, canvas_height, host_name);
     let variant = coffin.variant;
-    
-    let style = Style::default().fg(coffin_color).add_modifier(Modifier::BOLD);
-    
+
+    let style = Style::default()
+        .fg(coffin_color)
+        .add_modifier(Modifier::BOLD);
+
     // Calculate vertical spacing based on variant
     // Larger spacing for larger coffins to maintain proportions
     let line_spacing = match coffin.variant {
@@ -713,27 +707,27 @@ pub fn draw_coffin_block(
         CoffinVariant::Mid => 4.5,
         CoffinVariant::Label => 0.0,
     };
-    
+
     // Calculate starting Y position (center the coffin vertically)
     let total_height = (coffin.height as f64 - 1.0) * line_spacing;
     let start_y = cy + total_height / 2.0;
-    
+
     // Cell width for horizontal positioning (1 canvas unit per character)
     let cell_width = 1.0;
-    
+
     // Use the coffin's fixed width for centering (not line.chars().count())
     // This ensures consistent centering regardless of Unicode character widths
     let coffin_width = coffin.width as f64 * cell_width;
-    
+
     // Draw each line of the coffin from top to bottom
     for (i, line) in coffin.lines.iter().enumerate() {
         // Center based on fixed coffin width, not individual line width
         let x = cx - coffin_width / 2.0;
         let y = start_y - (i as f64 * line_spacing);
-        
+
         ctx.print(x, y, Span::styled(line.clone(), style));
     }
-    
+
     variant
 }
 
@@ -752,29 +746,28 @@ pub fn get_coffin_variant_for_canvas(canvas_height: f64, host_name: &str) -> Cof
 }
 
 /// Draw latency rings on the canvas around the HOST center
-/// 
+///
 /// Draws 3 concentric dotted circles using Braille markers:
 /// - Inner ring: Low latency endpoints (< 50ms)
 /// - Middle ring: Medium latency endpoints (50-200ms)
 /// - Outer ring: High latency endpoints (> 200ms)
-/// 
+///
 /// Ring radii are determined by the provided LayoutConfig, enabling adaptive
 /// scaling based on canvas dimensions.
-/// 
+///
 /// Requirements: 1.1, 2.1
 pub fn draw_latency_rings<F>(
     ctx: &mut ratatui::widgets::canvas::Context<'_>,
     layout: &LayoutConfig,
     draw_point: F,
-)
-where
+) where
     F: Fn(&mut ratatui::widgets::canvas::Context<'_>, f64, f64, Style),
 {
     let (cx, cy) = HOST_CENTER;
-    
+
     // Use adaptive ring radii from layout config
     let ring_radii = [layout.ring_low, layout.ring_medium, layout.ring_high];
-    
+
     for (ring_idx, radius) in ring_radii.iter().enumerate() {
         // Calculate opacity: inner ring is brightest, outer rings fade
         let opacity_factor = 1.0 - (ring_idx as f32 * 0.25);
@@ -783,13 +776,13 @@ where
         let b = (214.0 * opacity_factor) as u8;
         let ring_color = Color::Rgb(r, g, b);
         let ring_style = Style::default().fg(ring_color);
-        
+
         // Draw ring as series of dotted points (every 10 degrees for dotted effect)
         for angle_deg in (0..360).step_by(10) {
             let angle_rad = (angle_deg as f64).to_radians();
             let x = cx + radius * angle_rad.cos();
             let y = cy + radius * angle_rad.sin();
-            
+
             // Ensure points stay within canvas bounds with padding
             let min_bound = layout.edge_padding;
             let max_bound = 100.0 - layout.edge_padding;
@@ -801,30 +794,32 @@ where
 }
 
 /// Check if any endpoint has known latency data
-/// 
+///
 /// Returns true if at least one endpoint has a latency bucket other than Unknown.
 /// Used to conditionally render latency rings only when latency data is available.
-/// 
+///
 /// Requirements: 1.5
 pub fn has_latency_data(endpoints: &[EndpointNode]) -> bool {
-    endpoints.iter().any(|node| node.latency_bucket != LatencyBucket::Unknown)
+    endpoints
+        .iter()
+        .any(|node| node.latency_bucket != LatencyBucket::Unknown)
 }
 
 /// Calculate endpoint position on the canvas based on latency bucket
-/// 
+///
 /// Positions endpoints on concentric rings around HOST_CENTER based on their latency.
 /// Uses the provided LayoutConfig to determine ring radii, enabling adaptive scaling
 /// based on canvas dimensions.
-/// 
+///
 /// # Arguments
 /// * `endpoint_idx` - Index of this endpoint within its latency bucket
 /// * `total_in_bucket` - Total number of endpoints in the same bucket
 /// * `latency_bucket` - The latency classification for ring selection
 /// * `layout` - Layout configuration with calculated ring radii
-/// 
+///
 /// # Returns
 /// (x, y) coordinates in canvas space, clamped to stay within bounds
-/// 
+///
 /// Requirements: 1.2, 2.1, 2.3
 pub fn calculate_endpoint_position(
     endpoint_idx: usize,
@@ -833,7 +828,7 @@ pub fn calculate_endpoint_position(
     layout: &LayoutConfig,
 ) -> (f64, f64) {
     let (cx, cy) = HOST_CENTER;
-    
+
     // Select ring radius based on latency bucket using adaptive layout config
     let radius = match latency_bucket {
         LatencyBucket::Low => layout.ring_low,
@@ -841,25 +836,25 @@ pub fn calculate_endpoint_position(
         LatencyBucket::High => layout.ring_high,
         LatencyBucket::Unknown => layout.ring_medium, // Default to medium ring
     };
-    
+
     // Distribute endpoints evenly around the ring
     let total = total_in_bucket.max(1) as f64;
-    let angle = (endpoint_idx as f64 / total) * 2.0 * std::f64::consts::PI - std::f64::consts::PI / 2.0;
-    
+    let angle =
+        (endpoint_idx as f64 / total) * 2.0 * std::f64::consts::PI - std::f64::consts::PI / 2.0;
+
     // Add small jitter to prevent overlap
     let jitter = ((endpoint_idx % 3) as f64 - 1.0) * 2.0;
     let effective_radius = radius + jitter;
-    
+
     // Calculate position
     let x = cx + effective_radius * angle.cos();
     let y = cy + effective_radius * angle.sin();
-    
+
     // Clamp to canvas bounds with padding from layout config
     let min_bound = layout.edge_padding;
     let max_bound = 100.0 - layout.edge_padding;
     (x.clamp(min_bound, max_bound), y.clamp(min_bound, max_bound))
 }
-
 
 /// Endpoint node for canvas rendering
 /// Represents a remote endpoint with its visual properties for the network map
@@ -891,9 +886,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
 
     // Filter connections based on GraveyardMode
     let filtered_connections: Vec<&crate::net::Connection> = match app.graveyard_mode {
-        GraveyardMode::Host => {
-            app.connections.iter().collect()
-        }
+        GraveyardMode::Host => app.connections.iter().collect(),
         GraveyardMode::Process => {
             if let Some(selected_pid) = app.selected_process_pid {
                 app.connections
@@ -938,7 +931,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                         }
                     })
                     .unwrap_or_else(|| "unknown".to_string());
-                
+
                 let short_name = if process_name.len() > 8 {
                     format!("{}...", &process_name[..5])
                 } else {
@@ -957,7 +950,9 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
         Span::styled(
             format!(
                 "Endpoints: {} | Listening: {} | Total: {}  ",
-                endpoint_count, listen_count, filtered_connections.len()
+                endpoint_count,
+                listen_count,
+                filtered_connections.len()
             ),
             Style::default().fg(BONE_WHITE),
         ),
@@ -978,14 +973,12 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(NEON_PURPLE))
-            .title(vec![
-                Span::styled(
-                    "━ 🕸️ The Graveyard (Network Topology) ━",
-                    Style::default()
-                        .fg(NEON_PURPLE)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
+            .title(vec![Span::styled(
+                "━ 🕸️ The Graveyard (Network Topology) ━",
+                Style::default()
+                    .fg(NEON_PURPLE)
+                    .add_modifier(Modifier::BOLD),
+            )]),
     );
     f.render_widget(summary, chunks[0]);
 
@@ -996,7 +989,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     let max_nodes = MAX_VISIBLE_ENDPOINTS;
     let latency_config = &app.latency_config;
     let hidden_endpoint_count = sorted_endpoints.len().saturating_sub(max_nodes);
-    
+
     // First pass: classify all endpoints
     let endpoint_data: Vec<_> = sorted_endpoints
         .iter()
@@ -1004,10 +997,13 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
         .map(|(addr, conns)| {
             let state = conns
                 .iter()
-                .fold(HashMap::new(), |mut acc: HashMap<ConnectionState, usize>, c| {
-                    *acc.entry(c.state).or_insert(0) += 1;
-                    acc
-                })
+                .fold(
+                    HashMap::new(),
+                    |mut acc: HashMap<ConnectionState, usize>, c| {
+                        *acc.entry(c.state).or_insert(0) += 1;
+                        acc
+                    },
+                )
                 .into_iter()
                 .max_by_key(|(_, count)| *count)
                 .map(|(state, _)| state)
@@ -1020,30 +1016,34 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             };
 
             let latency_bucket = classify_latency(None, latency_config);
-            let is_listen_socket = *addr == "0.0.0.0" && conns.iter().all(|c| c.state == ConnectionState::Listen);
+            let is_listen_socket =
+                *addr == "0.0.0.0" && conns.iter().all(|c| c.state == ConnectionState::Listen);
             let endpoint_type = classify_endpoint(addr, is_listen_socket);
 
             (label, state, conns.len(), latency_bucket, endpoint_type)
         })
         .collect();
-    
-    let all_conn_counts: Vec<usize> = endpoint_data.iter().map(|(_, _, count, _, _)| *count).collect();
-    
+
+    let all_conn_counts: Vec<usize> = endpoint_data
+        .iter()
+        .map(|(_, _, count, _, _)| *count)
+        .collect();
+
     // Calculate adaptive layout based on canvas size
     // Larger terminals get larger ring radii for better spacing
     let canvas_width_cells = chunks[1].width.saturating_sub(2) as f64;
     let canvas_height_cells = chunks[1].height.saturating_sub(1) as f64;
-    
+
     // Use the smaller dimension to determine ring scaling
     let smaller_dimension = canvas_width_cells.min(canvas_height_cells);
-    
+
     // Scale ring radii based on canvas size
     // Base radii: [25.0, 35.0, 45.0]
     // Scale factor starts at 1.0 for small terminals (≤30 cells)
     // Scales up more aggressively to utilize large terminal space
     // Max scale factor 3.5 for very large terminals (≥100 cells)
     let scale_factor = ((smaller_dimension - 30.0) / 20.0 + 1.0).clamp(1.0, 3.5);
-    
+
     let layout_config = LayoutConfig {
         ring_low: RING_RADII[0] * scale_factor,
         ring_medium: RING_RADII[1] * scale_factor,
@@ -1051,37 +1051,44 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
         edge_padding: MIN_EDGE_PADDING,
         is_adaptive: scale_factor > 1.0,
     };
-    
+
     // Count endpoints per latency bucket for position calculation
     let mut bucket_counts: HashMap<LatencyBucket, usize> = HashMap::new();
     for (_, _, _, bucket, _) in &endpoint_data {
         *bucket_counts.entry(*bucket).or_insert(0) += 1;
     }
-    
+
     let mut bucket_indices: HashMap<LatencyBucket, usize> = HashMap::new();
-    
+
     // Second pass: calculate positions using index-based distribution
     let nodes: Vec<EndpointNode> = endpoint_data
         .into_iter()
-        .map(|(label, state, conn_count, latency_bucket, endpoint_type)| {
-            let idx_in_bucket = *bucket_indices.entry(latency_bucket).or_insert(0);
-            let total_in_bucket = *bucket_counts.get(&latency_bucket).unwrap_or(&1);
-            *bucket_indices.get_mut(&latency_bucket).unwrap() += 1;
-            
-            let (x, y) = calculate_endpoint_position(idx_in_bucket, total_in_bucket, latency_bucket, &layout_config);
-            let is_heavy = is_heavy_talker(conn_count, &all_conn_counts);
+        .map(
+            |(label, state, conn_count, latency_bucket, endpoint_type)| {
+                let idx_in_bucket = *bucket_indices.entry(latency_bucket).or_insert(0);
+                let total_in_bucket = *bucket_counts.get(&latency_bucket).unwrap_or(&1);
+                *bucket_indices.get_mut(&latency_bucket).unwrap() += 1;
 
-            EndpointNode {
-                label,
-                x,
-                y,
-                state,
-                conn_count,
-                latency_bucket,
-                endpoint_type,
-                is_heavy_talker: is_heavy,
-            }
-        })
+                let (x, y) = calculate_endpoint_position(
+                    idx_in_bucket,
+                    total_in_bucket,
+                    latency_bucket,
+                    &layout_config,
+                );
+                let is_heavy = is_heavy_talker(conn_count, &all_conn_counts);
+
+                EndpointNode {
+                    label,
+                    x,
+                    y,
+                    state,
+                    conn_count,
+                    latency_bucket,
+                    endpoint_type,
+                    is_heavy_talker: is_heavy,
+                }
+            },
+        )
         .collect();
 
     // Pulsing color for animation
@@ -1097,24 +1104,24 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     let animation_reduced = app.animation_reduced;
     let labels_enabled = app.graveyard_settings.labels_enabled;
     let overdrive_enabled = app.graveyard_settings.overdrive_enabled;
-    
+
     // Calculate canvas dimensions for proper aspect ratio
     // Braille markers: each cell is 2x4 dots, so we multiply accordingly
     let canvas_width_cells = chunks[1].width.saturating_sub(2) as f64; // subtract border
     let canvas_height_cells = chunks[1].height.saturating_sub(1) as f64; // subtract border
-    
+
     // Terminal cells are typically ~2:1 aspect ratio (taller than wide)
     // Braille: 2 dots wide, 4 dots tall per cell
     // So actual pixel ratio is: width_cells * 2 : height_cells * 4 = width_cells : height_cells * 2
     let canvas_pixel_width = canvas_width_cells * 2.0;
     let canvas_pixel_height = canvas_height_cells * 4.0;
-    
+
     // Calculate x_bounds to maintain square coordinate space centered on screen
     // y_bounds stays [0, 100], x_bounds scales based on aspect ratio
     let aspect_ratio = canvas_pixel_width / canvas_pixel_height.max(1.0);
     let x_range = 100.0 * aspect_ratio;
     let x_center = x_range / 2.0;
-    
+
     // Transform node x coordinates from 0-100 space to aspect-ratio adjusted space
     // Nodes are calculated around HOST_CENTER (50, 50), so we need to:
     // 1. Translate to origin (x - 50)
@@ -1129,7 +1136,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             node
         })
         .collect();
-    
+
     // For closure capture
     let canvas_height = canvas_pixel_height;
 
@@ -1148,7 +1155,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             // Center point adjusted for aspect ratio
             let cx = x_center;
             let cy = 50.0;
-            
+
             // Draw latency rings first (behind everything else)
             // Uses adaptive layout config for ring radii
             if should_draw_rings {
@@ -1161,7 +1168,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             // This ensures connection lines don't overlap the coffin silhouette
             let coffin_variant = get_coffin_variant_for_canvas(canvas_height, &center_label);
             let coffin_radius = coffin_exclusion_radius(coffin_variant);
-            
+
             for node in &nodes {
                 let line_color = match node.state {
                     ConnectionState::Established => TOXIC_GREEN,
@@ -1174,7 +1181,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 let dx = node.x - cx;
                 let dy = node.y - cy;
                 let dist = (dx * dx + dy * dy).sqrt();
-                
+
                 let (start_x, start_y) = if dist > coffin_radius {
                     let ratio = coffin_radius / dist;
                     (cx + dx * ratio, cy + dy * ratio)
@@ -1190,16 +1197,16 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     y2: node.y,
                     color: line_color,
                 });
-                
+
                 // Draw particles if animations enabled
                 if animations_enabled {
-                    let is_visible = node.x >= 0.0 && node.x <= 100.0 
-                                  && node.y >= 0.0 && node.y <= 100.0;
-                    
+                    let is_visible =
+                        node.x >= 0.0 && node.x <= 100.0 && node.y >= 0.0 && node.y <= 100.0;
+
                     if !is_visible {
                         continue;
                     }
-                    
+
                     let particle_color = match node.state {
                         ConnectionState::TimeWait | ConnectionState::CloseWait => PUMPKIN_ORANGE,
                         ConnectionState::Established => {
@@ -1211,13 +1218,14 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                         }
                         _ => NEON_PURPLE,
                     };
-                    
-                    let particle_offsets: &[f32] = if animation_reduced || edge_count > PARTICLE_REDUCTION_THRESHOLD {
-                        &REDUCED_PARTICLE_OFFSETS
-                    } else {
-                        &PARTICLE_OFFSETS
-                    };
-                    
+
+                    let particle_offsets: &[f32] =
+                        if animation_reduced || edge_count > PARTICLE_REDUCTION_THRESHOLD {
+                            &REDUCED_PARTICLE_OFFSETS
+                        } else {
+                            &PARTICLE_OFFSETS
+                        };
+
                     for &offset in particle_offsets {
                         let (px, py) = particle_position(
                             (start_x, start_y),
@@ -1249,14 +1257,18 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                 } else {
                     node.endpoint_type.icon_with_badge(node.is_heavy_talker)
                 };
-                
+
                 let color = match node.state {
                     ConnectionState::TimeWait | ConnectionState::CloseWait => PUMPKIN_ORANGE,
                     ConnectionState::Close => BLOOD_RED,
                     _ => node.endpoint_type.color(),
                 };
 
-                ctx.print(node.x, node.y, Span::styled(icon, Style::default().fg(color)));
+                ctx.print(
+                    node.x,
+                    node.y,
+                    Span::styled(icon, Style::default().fg(color)),
+                );
 
                 if labels_enabled {
                     let label = format!("{} ({})", node.label, node.conn_count);
@@ -1274,14 +1286,16 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     GraveyardMode::Process => "(no active connections for this process)",
                     GraveyardMode::Host => "The graveyard is quiet...",
                 };
-                
+
                 let msg_offset = (empty_message.len() as f64 / 2.0) * 1.2;
                 ctx.print(
                     cx - msg_offset,
                     cy - 5.0,
                     Span::styled(
                         empty_message,
-                        Style::default().fg(BONE_WHITE).add_modifier(Modifier::ITALIC),
+                        Style::default()
+                            .fg(BONE_WHITE)
+                            .add_modifier(Modifier::ITALIC),
                     ),
                 );
             }
@@ -1295,7 +1309,9 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     8.0,
                     Span::styled(
                         more_text,
-                        Style::default().fg(BONE_WHITE).add_modifier(Modifier::ITALIC),
+                        Style::default()
+                            .fg(BONE_WHITE)
+                            .add_modifier(Modifier::ITALIC),
                     ),
                 );
             }
@@ -1303,7 +1319,6 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
 
     f.render_widget(canvas, chunks[1]);
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1317,7 +1332,10 @@ mod tests {
 
     #[test]
     fn test_classify_endpoint_localhost() {
-        assert_eq!(classify_endpoint("127.0.0.1", false), EndpointType::Localhost);
+        assert_eq!(
+            classify_endpoint("127.0.0.1", false),
+            EndpointType::Localhost
+        );
         assert_eq!(classify_endpoint("::1", false), EndpointType::Localhost);
         assert_eq!(classify_endpoint("0.0.0.0", false), EndpointType::Localhost);
     }
@@ -1325,41 +1343,83 @@ mod tests {
     #[test]
     fn test_classify_endpoint_rfc1918_class_a() {
         assert_eq!(classify_endpoint("10.0.0.1", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("10.255.255.255", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("10.100.50.25", false), EndpointType::Private);
+        assert_eq!(
+            classify_endpoint("10.255.255.255", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("10.100.50.25", false),
+            EndpointType::Private
+        );
     }
 
     #[test]
     fn test_classify_endpoint_rfc1918_class_b() {
-        assert_eq!(classify_endpoint("172.16.0.1", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("172.31.255.255", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("172.20.100.50", false), EndpointType::Private);
+        assert_eq!(
+            classify_endpoint("172.16.0.1", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("172.31.255.255", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("172.20.100.50", false),
+            EndpointType::Private
+        );
         assert_eq!(classify_endpoint("172.15.0.1", false), EndpointType::Public);
         assert_eq!(classify_endpoint("172.32.0.1", false), EndpointType::Public);
     }
 
     #[test]
     fn test_classify_endpoint_rfc1918_class_c() {
-        assert_eq!(classify_endpoint("192.168.0.1", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("192.168.255.255", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("192.168.1.100", false), EndpointType::Private);
-        assert_eq!(classify_endpoint("192.169.0.1", false), EndpointType::Public);
-        assert_eq!(classify_endpoint("192.167.0.1", false), EndpointType::Public);
+        assert_eq!(
+            classify_endpoint("192.168.0.1", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("192.168.255.255", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("192.168.1.100", false),
+            EndpointType::Private
+        );
+        assert_eq!(
+            classify_endpoint("192.169.0.1", false),
+            EndpointType::Public
+        );
+        assert_eq!(
+            classify_endpoint("192.167.0.1", false),
+            EndpointType::Public
+        );
     }
 
     #[test]
     fn test_classify_endpoint_public() {
         assert_eq!(classify_endpoint("8.8.8.8", false), EndpointType::Public);
         assert_eq!(classify_endpoint("1.1.1.1", false), EndpointType::Public);
-        assert_eq!(classify_endpoint("203.0.113.50", false), EndpointType::Public);
-        assert_eq!(classify_endpoint("198.51.100.1", false), EndpointType::Public);
+        assert_eq!(
+            classify_endpoint("203.0.113.50", false),
+            EndpointType::Public
+        );
+        assert_eq!(
+            classify_endpoint("198.51.100.1", false),
+            EndpointType::Public
+        );
     }
 
     #[test]
     fn test_classify_endpoint_listen_only() {
         assert_eq!(classify_endpoint("0.0.0.0", true), EndpointType::ListenOnly);
-        assert_eq!(classify_endpoint("127.0.0.1", true), EndpointType::ListenOnly);
-        assert_eq!(classify_endpoint("192.168.1.1", true), EndpointType::ListenOnly);
+        assert_eq!(
+            classify_endpoint("127.0.0.1", true),
+            EndpointType::ListenOnly
+        );
+        assert_eq!(
+            classify_endpoint("192.168.1.1", true),
+            EndpointType::ListenOnly
+        );
     }
 
     #[test]
@@ -1426,7 +1486,7 @@ mod tests {
             low_threshold_ms: 100,
             high_threshold_ms: 500,
         };
-        
+
         assert_eq!(classify_latency(Some(50), &config), LatencyBucket::Low);
         assert_eq!(classify_latency(Some(99), &config), LatencyBucket::Low);
         assert_eq!(classify_latency(Some(100), &config), LatencyBucket::Medium);
@@ -1443,7 +1503,7 @@ mod tests {
     #[test]
     fn test_is_heavy_talker_top_5() {
         let all_counts = vec![100, 80, 60, 40, 20, 10, 5];
-        
+
         assert!(is_heavy_talker(100, &all_counts));
         assert!(is_heavy_talker(80, &all_counts));
         assert!(is_heavy_talker(60, &all_counts));
@@ -1456,7 +1516,7 @@ mod tests {
     #[test]
     fn test_is_heavy_talker_fewer_than_5() {
         let all_counts = vec![50, 30, 10];
-        
+
         assert!(is_heavy_talker(50, &all_counts));
         assert!(is_heavy_talker(30, &all_counts));
         assert!(is_heavy_talker(10, &all_counts));
@@ -1471,7 +1531,7 @@ mod tests {
     #[test]
     fn test_is_heavy_talker_zero_count() {
         let all_counts = vec![10, 5, 0, 0, 0];
-        
+
         assert!(!is_heavy_talker(0, &all_counts));
         assert!(is_heavy_talker(10, &all_counts));
         assert!(is_heavy_talker(5, &all_counts));
@@ -1480,7 +1540,7 @@ mod tests {
     #[test]
     fn test_is_heavy_talker_ties() {
         let all_counts = vec![100, 50, 50, 50, 50, 10];
-        
+
         assert!(is_heavy_talker(100, &all_counts));
         assert!(is_heavy_talker(50, &all_counts));
         assert!(!is_heavy_talker(10, &all_counts));
@@ -1495,7 +1555,7 @@ mod tests {
     fn test_particle_position_at_start() {
         let start = (50.0, 50.0);
         let end = (80.0, 30.0);
-        
+
         let pos = particle_position(start, end, 0.0, 0.0);
         assert!((pos.0 - 50.0).abs() < 0.001);
         assert!((pos.1 - 50.0).abs() < 0.001);
@@ -1505,7 +1565,7 @@ mod tests {
     fn test_particle_position_at_middle() {
         let start = (50.0, 50.0);
         let end = (80.0, 30.0);
-        
+
         let pos = particle_position(start, end, 0.5, 0.0);
         assert!((pos.0 - 65.0).abs() < 0.001);
         assert!((pos.1 - 40.0).abs() < 0.001);
@@ -1515,7 +1575,7 @@ mod tests {
     fn test_particle_position_at_end() {
         let start = (50.0, 50.0);
         let end = (80.0, 30.0);
-        
+
         let pos = particle_position(start, end, 1.0, 0.0);
         assert!((pos.0 - 50.0).abs() < 0.001);
         assert!((pos.1 - 50.0).abs() < 0.001);
@@ -1525,11 +1585,11 @@ mod tests {
     fn test_particle_position_with_offset() {
         let start = (0.0, 0.0);
         let end = (100.0, 100.0);
-        
+
         let pos = particle_position(start, end, 0.0, 0.33);
         assert!((pos.0 - 33.0).abs() < 0.001);
         assert!((pos.1 - 33.0).abs() < 0.001);
-        
+
         let pos = particle_position(start, end, 0.0, 0.66);
         assert!((pos.0 - 66.0).abs() < 0.001);
         assert!((pos.1 - 66.0).abs() < 0.001);
@@ -1539,7 +1599,7 @@ mod tests {
     fn test_particle_position_wrapping() {
         let start = (0.0, 0.0);
         let end = (100.0, 0.0);
-        
+
         let pos = particle_position(start, end, 0.8, 0.33);
         let expected_t = (0.8 + 0.33) % 1.0;
         assert!((pos.0 - expected_t * 100.0).abs() < 0.001);
@@ -1554,15 +1614,15 @@ mod tests {
     fn test_calculate_endpoint_position_ring_selection() {
         // Use default layout config (fixed radii)
         let layout = LayoutConfig::default();
-        
+
         let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low, &layout);
         let (x_med, y_med) = calculate_endpoint_position(0, 1, LatencyBucket::Medium, &layout);
         let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High, &layout);
-        
+
         let dist_low = ((x_low - 50.0).powi(2) + (y_low - 50.0).powi(2)).sqrt();
         let dist_med = ((x_med - 50.0).powi(2) + (y_med - 50.0).powi(2)).sqrt();
         let dist_high = ((x_high - 50.0).powi(2) + (y_high - 50.0).powi(2)).sqrt();
-        
+
         assert!(dist_low < dist_med);
         assert!(dist_med < dist_high);
     }
@@ -1571,13 +1631,15 @@ mod tests {
     fn test_calculate_endpoint_position_unknown_fallback() {
         // Use default layout config (fixed radii)
         let layout = LayoutConfig::default();
-        
-        let (x_unknown, y_unknown) = calculate_endpoint_position(0, 1, LatencyBucket::Unknown, &layout);
-        let (x_medium, y_medium) = calculate_endpoint_position(0, 1, LatencyBucket::Medium, &layout);
-        
+
+        let (x_unknown, y_unknown) =
+            calculate_endpoint_position(0, 1, LatencyBucket::Unknown, &layout);
+        let (x_medium, y_medium) =
+            calculate_endpoint_position(0, 1, LatencyBucket::Medium, &layout);
+
         let dist_unknown = ((x_unknown - 50.0).powi(2) + (y_unknown - 50.0).powi(2)).sqrt();
         let dist_medium = ((x_medium - 50.0).powi(2) + (y_medium - 50.0).powi(2)).sqrt();
-        
+
         assert!((dist_unknown - dist_medium).abs() < 5.0);
     }
 
@@ -1585,63 +1647,74 @@ mod tests {
     fn test_calculate_endpoint_position_bounds() {
         // Use default layout config (fixed radii)
         let layout = LayoutConfig::default();
-        
+
         for i in 0..10 {
-            for bucket in [LatencyBucket::Low, LatencyBucket::Medium, LatencyBucket::High] {
+            for bucket in [
+                LatencyBucket::Low,
+                LatencyBucket::Medium,
+                LatencyBucket::High,
+            ] {
                 let (x, y) = calculate_endpoint_position(i, 10, bucket, &layout);
-                assert!(x >= layout.edge_padding && x <= 100.0 - layout.edge_padding, 
-                    "x={} out of bounds for padding={}", x, layout.edge_padding);
-                assert!(y >= layout.edge_padding && y <= 100.0 - layout.edge_padding, 
-                    "y={} out of bounds for padding={}", y, layout.edge_padding);
+                assert!(
+                    x >= layout.edge_padding && x <= 100.0 - layout.edge_padding,
+                    "x={} out of bounds for padding={}",
+                    x,
+                    layout.edge_padding
+                );
+                assert!(
+                    y >= layout.edge_padding && y <= 100.0 - layout.edge_padding,
+                    "y={} out of bounds for padding={}",
+                    y,
+                    layout.edge_padding
+                );
             }
         }
     }
-    
+
     #[test]
     fn test_calculate_endpoint_position_ring_ordering() {
         // Test that ring ordering is preserved (Low < Medium < High)
         let layout = LayoutConfig::default();
-        
+
         let (x_low, y_low) = calculate_endpoint_position(0, 1, LatencyBucket::Low, &layout);
         let (x_high, y_high) = calculate_endpoint_position(0, 1, LatencyBucket::High, &layout);
-        
+
         let dist_low = ((x_low - 50.0).powi(2) + (y_low - 50.0).powi(2)).sqrt();
         let dist_high = ((x_high - 50.0).powi(2) + (y_high - 50.0).powi(2)).sqrt();
-        
+
         // Verify ring ordering is preserved
-        assert!(dist_low < dist_high, "Low ring should be closer than high ring");
+        assert!(
+            dist_low < dist_high,
+            "Low ring should be closer than high ring"
+        );
     }
 
     #[test]
     fn test_has_latency_data() {
-        let nodes_with_data = vec![
-            EndpointNode {
-                label: "test".to_string(),
-                x: 50.0,
-                y: 50.0,
-                state: ConnectionState::Established,
-                conn_count: 1,
-                latency_bucket: LatencyBucket::Low,
-                endpoint_type: EndpointType::Public,
-                is_heavy_talker: false,
-            },
-        ];
+        let nodes_with_data = vec![EndpointNode {
+            label: "test".to_string(),
+            x: 50.0,
+            y: 50.0,
+            state: ConnectionState::Established,
+            conn_count: 1,
+            latency_bucket: LatencyBucket::Low,
+            endpoint_type: EndpointType::Public,
+            is_heavy_talker: false,
+        }];
         assert!(has_latency_data(&nodes_with_data));
-        
-        let nodes_without_data = vec![
-            EndpointNode {
-                label: "test".to_string(),
-                x: 50.0,
-                y: 50.0,
-                state: ConnectionState::Established,
-                conn_count: 1,
-                latency_bucket: LatencyBucket::Unknown,
-                endpoint_type: EndpointType::Public,
-                is_heavy_talker: false,
-            },
-        ];
+
+        let nodes_without_data = vec![EndpointNode {
+            label: "test".to_string(),
+            x: 50.0,
+            y: 50.0,
+            state: ConnectionState::Established,
+            conn_count: 1,
+            latency_bucket: LatencyBucket::Unknown,
+            endpoint_type: EndpointType::Public,
+            is_heavy_talker: false,
+        }];
         assert!(!has_latency_data(&nodes_without_data));
-        
+
         let empty_nodes: Vec<EndpointNode> = vec![];
         assert!(!has_latency_data(&empty_nodes));
     }
@@ -1663,28 +1736,51 @@ mod tests {
         // This test ensures the Large coffin template is NEVER changed
         // DO NOT MODIFY THESE ASSERTIONS - they are the source of truth
         let coffin = build_large_coffin("HOST");
-        
+
         assert_eq!(coffin.variant, CoffinVariant::Large);
         assert_eq!(coffin.height, 4, "Large coffin must be exactly 4 lines");
-        assert_eq!(coffin.width, LARGE_COFFIN_WIDTH, "Large coffin width must match constant");
+        assert_eq!(
+            coffin.width, LARGE_COFFIN_WIDTH,
+            "Large coffin width must match constant"
+        );
         assert_eq!(coffin.lines.len(), 4);
-        
+
         // Verify all lines are exactly 14 chars
         for (i, line) in coffin.lines.iter().enumerate() {
-            assert_eq!(line.chars().count(), 14, "Line {} must be exactly 14 chars", i);
+            assert_eq!(
+                line.chars().count(),
+                14,
+                "Line {} must be exactly 14 chars",
+                i
+            );
         }
-        
+
         // Verify EXACT template structure (14 chars wide)
         // Line 0: Top point
-        assert_eq!(coffin.lines[0], "   /‾‾‾‾‾‾\\   ", "Line 0 (top) must match exactly");
+        assert_eq!(
+            coffin.lines[0], "   /‾‾‾‾‾‾\\   ",
+            "Line 0 (top) must match exactly"
+        );
         // Line 1: HOST placeholder (centered in 6-char space)
         assert!(coffin.lines[1].contains("HOST"), "Line 1 must contain HOST");
-        assert!(coffin.lines[1].starts_with("  /"), "Line 1 must start with '  /'");
-        assert!(coffin.lines[1].ends_with("\\  "), "Line 1 must end with '\\  '");
+        assert!(
+            coffin.lines[1].starts_with("  /"),
+            "Line 1 must start with '  /'"
+        );
+        assert!(
+            coffin.lines[1].ends_with("\\  "),
+            "Line 1 must end with '\\  '"
+        );
         // Line 2: Lower body
-        assert_eq!(coffin.lines[2], "  \\        /  ", "Line 2 must match exactly");
+        assert_eq!(
+            coffin.lines[2], "  \\        /  ",
+            "Line 2 must match exactly"
+        );
         // Line 3: Bottom base
-        assert_eq!(coffin.lines[3], "   \\______/   ", "Line 3 (bottom) must match exactly");
+        assert_eq!(
+            coffin.lines[3], "   \\______/   ",
+            "Line 3 (bottom) must match exactly"
+        );
     }
 
     #[test]
@@ -1692,26 +1788,43 @@ mod tests {
         // This test ensures the Mid coffin template is NEVER changed
         // DO NOT MODIFY THESE ASSERTIONS - they are the source of truth
         let coffin = build_mid_coffin("HOST");
-        
+
         assert_eq!(coffin.variant, CoffinVariant::Mid);
         assert_eq!(coffin.height, 3, "Mid coffin must be exactly 3 lines");
-        assert_eq!(coffin.width, MID_COFFIN_WIDTH, "Mid coffin width must match constant");
+        assert_eq!(
+            coffin.width, MID_COFFIN_WIDTH,
+            "Mid coffin width must match constant"
+        );
         assert_eq!(coffin.lines.len(), 3);
-        
+
         // Verify all lines are exactly 11 chars
         for (i, line) in coffin.lines.iter().enumerate() {
-            assert_eq!(line.chars().count(), 11, "Line {} must be exactly 11 chars", i);
+            assert_eq!(
+                line.chars().count(),
+                11,
+                "Line {} must be exactly 11 chars",
+                i
+            );
         }
-        
+
         // Verify EXACT template structure (11 chars wide)
         // Line 0: Top
-        assert_eq!(coffin.lines[0], " /‾‾‾‾‾‾\\  ", "Line 0 (top) must match exactly");
+        assert_eq!(
+            coffin.lines[0], " /‾‾‾‾‾‾\\  ",
+            "Line 0 (top) must match exactly"
+        );
         // Line 1: HOST placeholder
         assert!(coffin.lines[1].contains("HOST"), "Line 1 must contain HOST");
-        assert!(coffin.lines[1].starts_with("/"), "Line 1 must start with '/'");
+        assert!(
+            coffin.lines[1].starts_with("/"),
+            "Line 1 must start with '/'"
+        );
         assert!(coffin.lines[1].ends_with(" "), "Line 1 must end with space");
         // Line 2: Bottom base
-        assert_eq!(coffin.lines[2], " \\______/  ", "Line 2 (bottom) must match exactly");
+        assert_eq!(
+            coffin.lines[2], " \\______/  ",
+            "Line 2 (bottom) must match exactly"
+        );
     }
 
     #[test]
@@ -1719,11 +1832,11 @@ mod tests {
         // This test ensures the Label coffin format is NEVER changed
         // Format: [⚰ HOST]
         let coffin = build_label_coffin("HOST", 20);
-        
+
         assert_eq!(coffin.variant, CoffinVariant::Label);
         assert_eq!(coffin.height, 1, "Label coffin must be exactly 1 line");
         assert_eq!(coffin.lines.len(), 1);
-        
+
         // Verify EXACT format
         assert_eq!(coffin.lines[0], "[⚰ HOST]", "Label format must be [⚰ HOST]");
     }
@@ -1732,39 +1845,51 @@ mod tests {
     fn test_coffin_name_truncation() {
         // Long name should be truncated with ".."
         let coffin = build_large_coffin("kafka-broker-1");
-        
+
         // Name should be truncated to fit LARGE_COFFIN_MAX_NAME (6 chars)
         let has_truncated = coffin.lines.iter().any(|line| line.contains(".."));
         assert!(has_truncated, "Long name should be truncated with ..");
-        
+
         // Verify the truncated name fits within the coffin
         let host_line = &coffin.lines[1];
-        assert_eq!(host_line.chars().count(), LARGE_COFFIN_WIDTH, 
-            "Truncated name line must maintain coffin width");
+        assert_eq!(
+            host_line.chars().count(),
+            LARGE_COFFIN_WIDTH,
+            "Truncated name line must maintain coffin width"
+        );
     }
 
     #[test]
     fn test_coffin_graceful_degradation() {
         // Test degradation from Large to Mid to Label
         // Canvas-to-char conversion: char_height = area_height / 4.0, char_width = area_width / 1.0
-        
+
         // Large coffin at large canvas (100x100 -> 100 chars wide, 25 chars tall)
         // Requires: width >= 14, height >= 5
         let large = choose_coffin_variant(100.0, 100.0, "TEST");
-        assert_eq!(large.variant, CoffinVariant::Large, 
-            "Large canvas should use Large coffin");
-        
+        assert_eq!(
+            large.variant,
+            CoffinVariant::Large,
+            "Large canvas should use Large coffin"
+        );
+
         // Mid coffin at medium canvas (13x16 -> 13 chars wide, 4 chars tall)
         // width < 14 but >= 11, height >= 3 -> Mid
         let mid = choose_coffin_variant(13.0, 16.0, "TEST");
-        assert_eq!(mid.variant, CoffinVariant::Mid,
-            "Medium canvas should use Mid coffin");
-        
+        assert_eq!(
+            mid.variant,
+            CoffinVariant::Mid,
+            "Medium canvas should use Mid coffin"
+        );
+
         // Label only at small canvas (10x4 -> 10 chars wide, 1 char tall)
         // width < 11 or height < 3 forces Label
         let label = choose_coffin_variant(10.0, 4.0, "TEST");
-        assert_eq!(label.variant, CoffinVariant::Label,
-            "Small canvas should use Label coffin");
+        assert_eq!(
+            label.variant,
+            CoffinVariant::Label,
+            "Small canvas should use Label coffin"
+        );
     }
 
     #[test]
@@ -1776,7 +1901,7 @@ mod tests {
         assert_eq!(large.height, LARGE_COFFIN_HEIGHT);
         assert_eq!(large.width, 14, "Large coffin width constant must be 14");
         assert_eq!(large.height, 4, "Large coffin height constant must be 4");
-        
+
         let mid = build_mid_coffin("X");
         assert_eq!(mid.width, MID_COFFIN_WIDTH);
         assert_eq!(mid.height, MID_COFFIN_HEIGHT);
@@ -1790,11 +1915,17 @@ mod tests {
         let large_radius = coffin_exclusion_radius(CoffinVariant::Large);
         let mid_radius = coffin_exclusion_radius(CoffinVariant::Mid);
         let label_radius = coffin_exclusion_radius(CoffinVariant::Label);
-        
+
         // Larger coffins need larger exclusion zones
-        assert!(large_radius > mid_radius, "Large coffin needs larger exclusion");
-        assert!(mid_radius > label_radius, "Mid coffin needs larger exclusion than Label");
-        
+        assert!(
+            large_radius > mid_radius,
+            "Large coffin needs larger exclusion"
+        );
+        assert!(
+            mid_radius > label_radius,
+            "Mid coffin needs larger exclusion than Label"
+        );
+
         // Verify specific values (increased for better visual separation)
         assert_eq!(large_radius, 20.0, "Large coffin exclusion radius");
         assert_eq!(mid_radius, 16.0, "Mid coffin exclusion radius");
@@ -1824,19 +1955,31 @@ mod tests {
     #[test]
     fn test_coffin_with_various_hostnames() {
         // Test coffin rendering with various hostname lengths
-        
+
         // Short name (HOST is now on line[1])
         let short = build_large_coffin("DB");
-        assert!(short.lines[1].contains("DB"), "Short name should be visible");
-        
+        assert!(
+            short.lines[1].contains("DB"),
+            "Short name should be visible"
+        );
+
         // Exact fit name (6 chars)
         let exact = build_large_coffin("KAFKA1");
-        assert!(exact.lines[1].contains("KAFKA1"), "Exact fit name should be visible");
-        
+        assert!(
+            exact.lines[1].contains("KAFKA1"),
+            "Exact fit name should be visible"
+        );
+
         // Long name (should truncate)
         let long = build_large_coffin("very-long-hostname");
-        assert!(long.lines[1].contains(".."), "Long name should be truncated");
-        assert!(!long.lines[1].contains("very-long"), "Full long name should not appear");
+        assert!(
+            long.lines[1].contains(".."),
+            "Long name should be truncated"
+        );
+        assert!(
+            !long.lines[1].contains("very-long"),
+            "Full long name should not appear"
+        );
     }
 
     #[test]
@@ -1844,10 +1987,12 @@ mod tests {
         // Test that label coffin respects max_width
         let narrow = build_label_coffin("kafka-broker-1", 10);
         assert!(narrow.width <= 10, "Label should respect max_width");
-        
+
         let wide = build_label_coffin("kafka-broker-1", 30);
         // With 30 chars available, should show more of the name
-        assert!(wide.lines[0].len() > narrow.lines[0].len(), 
-            "Wider constraint should show more of the name");
+        assert!(
+            wide.lines[0].len() > narrow.lines[0].len(),
+            "Wider constraint should show more of the name"
+        );
     }
 }

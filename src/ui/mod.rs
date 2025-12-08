@@ -37,9 +37,9 @@ pub fn draw(f: &mut Frame, app: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(8),  // Banner
-            Constraint::Min(0),     // Body
-            Constraint::Length(3),  // Status bar
+            Constraint::Length(8), // Banner
+            Constraint::Min(0),    // Body
+            Constraint::Length(3), // Status bar
         ])
         .split(size);
 
@@ -56,7 +56,7 @@ pub fn draw(f: &mut Frame, app: &mut AppState) {
         .split(chunks[1]);
 
     render_network_map(f, body_chunks[0], app);
-    
+
     // Right side: Soul Inspector + Grimoire
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -65,7 +65,7 @@ pub fn draw(f: &mut Frame, app: &mut AppState) {
             Constraint::Percentage(40), // Grimoire
         ])
         .split(body_chunks[1]);
-    
+
     render_soul_inspector(f, right_chunks[0], app);
     render_grimoire(f, right_chunks[1], app);
 

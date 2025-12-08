@@ -83,14 +83,14 @@ fn build_inode_pid_map() -> io::Result<HashMap<u64, (i32, String)>> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        
+
         // Only process numeric directories (PIDs)
         if let Some(filename) = path.file_name() {
             if let Some(pid_str) = filename.to_str() {
                 if let Ok(pid) = pid_str.parse::<i32>() {
                     // Read process name from /proc/<pid>/comm
                     let process_name = read_process_name(pid);
-                    
+
                     // Scan /proc/<pid>/fd/* for socket inodes
                     let fd_path = path.join("fd");
                     match fs::read_dir(&fd_path) {
@@ -100,14 +100,13 @@ fn build_inode_pid_map() -> io::Result<HashMap<u64, (i32, String)>> {
                                 if let Ok(link_target) = fs::read_link(fd_entry.path()) {
                                     if let Some(target_str) = link_target.to_str() {
                                         // Socket links look like "socket:[12345]"
-                                        if target_str.starts_with("socket:[") && target_str.ends_with(']') {
+                                        if target_str.starts_with("socket:[")
+                                            && target_str.ends_with(']')
+                                        {
                                             // Extract inode number
                                             let inode_str = &target_str[8..target_str.len() - 1];
                                             if let Ok(inode) = inode_str.parse::<u64>() {
-                                                map.insert(
-                                                    inode,
-                                                    (pid, process_name.clone()),
-                                                );
+                                                map.insert(inode, (pid, process_name.clone()));
                                             }
                                         }
                                     }
