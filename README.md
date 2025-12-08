@@ -2,6 +2,10 @@
 
 **A terminal TUI that visualizes network "undead" connections using graveyard and coffin metaphors**
 
+> **Kiroween 2025 Submission Version**: [`kiroween-2025-submission`](https://github.com/yourusername/ntomb/releases/tag/kiroween-2025-submission)  
+> This tag marks the official submission version for the Kiroween 2025 hackathon (submitted December 5, 2025).  
+> Development continues on the main branch with bug fixes and new features.
+
 ---
 
 ## Introduction
