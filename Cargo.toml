@@ -1,6 +1,6 @@
 [package]
 name = "ntomb"
-version = "0.6.66"
+version = "0.0.1"
 edition = "2021"
 description = "Network Tomb: Process-centric network visualization with Halloween theme"
 authors = ["Kiroween Hackathon"]

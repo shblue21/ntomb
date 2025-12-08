@@ -24,7 +24,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, app: &AppState) {
         ]),
         Line::from(vec![
             Span::styled("  | \\ | ||_   _|/ __ \\ |  \\/  ||  _ \\ ", Style::default().fg(Color::Rgb(148, 53, 236))),
-            Span::styled("   >>> The Necromancer's Terminal v0.9.0 <<<", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
+            Span::styled("   >>> The Necromancer's Terminal v0.0.1 <<<", Style::default().fg(Color::Rgb(255, 140, 0)).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
             Span::styled("  |  \\| |  | | | |  | || |\\/| || |_) |", Style::default().fg(Color::Rgb(158, 63, 246))),
