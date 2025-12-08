@@ -71,7 +71,9 @@ Network endpoints are arranged radially around a central coffin (⚰️), with d
 
 ## Screenshots
 
-<!-- TODO: add main UI screenshot (Graveyard + Soul Inspector + Traffic History) -->
+### Main Interface
+![ntomb main interface](./docs/screenshots/main-ui.png)
+*The Graveyard (left) visualizes network topology with radial node layout, while Soul Inspector (top right) shows detailed connection info and Traffic History (middle right) displays real-time activity. Active Connections panel (bottom right) lists all sockets with state-based colors.*
 
 <!-- TODO: add Host mode vs Process mode comparison -->
 
