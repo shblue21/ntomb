@@ -8,6 +8,20 @@
 
 ---
 
+## Screenshots
+
+### Main Interface
+![ntomb main interface](./docs/screenshots/main-ui.png)
+*The Graveyard (left) visualizes network topology with radial node layout, while Soul Inspector (top right) shows detailed connection info and Traffic History (middle right) displays real-time activity. Active Connections panel (bottom right) lists all sockets with state-based colors.*
+
+<!-- TODO: add Host mode vs Process mode comparison -->
+
+<!-- TODO: add Kiroween Overdrive mode demo -->
+
+<!-- TODO: add suspicious connections detection demo -->
+
+---
+
 ## Introduction
 
 ntomb is a terminal-based monitoring tool that visualizes network connections on Linux systems in real-time. Unlike traditional tools like `netstat` and `ss` that display connections as flat lists, ntomb presents the relationship between hosts and endpoints intuitively through a **Halloween-themed graphical interface**.
@@ -66,20 +80,6 @@ Network endpoints are arranged radially around a central coffin (⚰️), with d
 - **Spec-driven Development**: Requirements, design, and tasks documented in `.kiro/specs/`
 - **Steering Guides**: Visual design, security domain, and coding style guides in `.kiro/steering/`
 - **MCP Integration**: Model Context Protocol server implementation in `ntomb_mcp/` (suspicious detection rules)
-
----
-
-## Screenshots
-
-### Main Interface
-![ntomb main interface](./docs/screenshots/main-ui.png)
-*The Graveyard (left) visualizes network topology with radial node layout, while Soul Inspector (top right) shows detailed connection info and Traffic History (middle right) displays real-time activity. Active Connections panel (bottom right) lists all sockets with state-based colors.*
-
-<!-- TODO: add Host mode vs Process mode comparison -->
-
-<!-- TODO: add Kiroween Overdrive mode demo -->
-
-<!-- TODO: add suspicious connections detection demo -->
 
 ---
 
