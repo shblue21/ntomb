@@ -21,6 +21,7 @@ use ratatui::{
     Frame,
 };
 use std::collections::HashMap;
+use unicode_width::UnicodeWidthStr;
 
 // Latency ring constants for Graveyard visualization (Requirements 1.1, 1.6)
 // Ring radii in virtual canvas space (0-100)
@@ -1264,16 +1265,20 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     _ => node.endpoint_type.color(),
                 };
 
+                // Center the icon using unicode width for accurate positioning
+                let icon_offset = icon.width() as f64 / 2.0;
                 ctx.print(
-                    node.x,
+                    node.x - icon_offset,
                     node.y,
-                    Span::styled(icon, Style::default().fg(color)),
+                    Span::styled(icon.clone(), Style::default().fg(color)),
                 );
 
                 if labels_enabled {
                     let label = format!("{} ({})", node.label, node.conn_count);
+                    // Use unicode width for accurate positioning with emoji
+                    let label_offset = label.width() as f64 / 2.0;
                     ctx.print(
-                        node.x - 6.0,
+                        node.x - label_offset,
                         node.y - 4.0,
                         Span::styled(label, Style::default().fg(color)),
                     );
@@ -1287,7 +1292,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     GraveyardMode::Host => "The graveyard is quiet...",
                 };
 
-                let msg_offset = (empty_message.len() as f64 / 2.0) * 1.2;
+                let msg_offset = (empty_message.width() as f64 / 2.0) * 1.2;
                 ctx.print(
                     cx - msg_offset,
                     cy - 5.0,
@@ -1303,7 +1308,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             // Show "... and N more" indicator
             if hidden_endpoint_count > 0 {
                 let more_text = format!("... and {} more", hidden_endpoint_count);
-                let text_offset = (more_text.len() as f64 / 2.0) * 1.2;
+                let text_offset = (more_text.width() as f64 / 2.0) * 1.2;
                 ctx.print(
                     cx - text_offset,
                     8.0,

@@ -22,6 +22,9 @@ netstat2 = "0.11.2"
 # System info (cross-platform process info)
 sysinfo = "0.37"
 
+# Unicode character width calculation (matches ratatui's dependency)
+unicode-width = "0.2.0"
+
 [[bin]]
 name = "ntomb"
 path = "src/main.rs"
