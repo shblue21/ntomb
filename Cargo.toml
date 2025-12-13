@@ -2,9 +2,23 @@
 name = "ntomb"
 version = "0.0.1"
 edition = "2021"
+rust-version = "1.74"
 description = "Network Tomb: Process-centric network visualization with Halloween theme"
-authors = ["Kiroween Hackathon"]
+authors = ["JIHUNKIM <jihunkimkw@gmail.com>"]
 license = "MIT"
+repository = "https://github.com/shblue21/ntomb"
+homepage = "https://github.com/shblue21/ntomb"
+documentation = "https://docs.rs/ntomb"
+readme = "README.md"
+keywords = ["network", "monitoring", "tui", "security", "visualization"]
+categories = ["command-line-utilities", "network-programming", "visualization"]
+exclude = [
+    "target/",
+    ".git/",
+    ".github/",
+    "*.png",
+    "docs/screenshots/"
+]
 
 [dependencies]
 # TUI framework
