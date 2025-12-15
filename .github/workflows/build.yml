@@ -74,3 +74,53 @@ jobs:
           path: |
             ntomb-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
             ntomb-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+
+  build-packages:
+    name: Build Linux Packages
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deb and cargo-generate-rpm
+        run: |
+          cargo install cargo-deb
+          cargo install cargo-generate-rpm
+
+      - name: Build binary for packaging
+        run: cargo build --release
+
+      - name: Build DEB package
+        run: cargo deb
+
+      - name: Build RPM package
+        run: cargo generate-rpm
+
+      - name: Find package files
+        id: packages
+        run: |
+          DEB_FILE=$(find target/debian -name "*.deb" | head -1)
+          RPM_FILE=$(find target/generate-rpm -name "*.rpm" | head -1)
+          echo "deb_file=$DEB_FILE" >> $GITHUB_OUTPUT
+          echo "rpm_file=$RPM_FILE" >> $GITHUB_OUTPUT
+          echo "deb_name=$(basename $DEB_FILE)" >> $GITHUB_OUTPUT
+          echo "rpm_name=$(basename $RPM_FILE)" >> $GITHUB_OUTPUT
+
+      - name: Generate package checksums
+        run: |
+          shasum -a 256 ${{ steps.packages.outputs.deb_file }} > ${{ steps.packages.outputs.deb_file }}.sha256
+          shasum -a 256 ${{ steps.packages.outputs.rpm_file }} > ${{ steps.packages.outputs.rpm_file }}.sha256
+
+      - name: Upload DEB/RPM packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ntomb-packages
+          path: |
+            ${{ steps.packages.outputs.deb_file }}
+            ${{ steps.packages.outputs.deb_file }}.sha256
+            ${{ steps.packages.outputs.rpm_file }}
+            ${{ steps.packages.outputs.rpm_file }}.sha256

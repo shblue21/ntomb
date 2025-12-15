@@ -8,7 +8,7 @@ authors = ["JIHUNKIM <jihunkimkw@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/shblue21/ntomb"
 homepage = "https://github.com/shblue21/ntomb"
-documentation = "https://docs.rs/ntomb"
+documentation = "https://github.com/shblue21/ntomb#readme"
 readme = "README.md"
 keywords = ["network", "monitoring", "tui", "security", "visualization"]
 categories = ["command-line-utilities", "network-programming", "visualization"]
@@ -50,3 +50,27 @@ proptest = "1.5"
 opt-level = 3
 lto = true
 strip = true
+
+# DEB package metadata (Ubuntu/Debian)
+[package.metadata.deb]
+maintainer = "JIHUNKIM <jihunkimkw@gmail.com>"
+copyright = "2025, JIHUNKIM"
+license-file = ["LICENSE", "0"]
+extended-description = """
+ntomb is a terminal-based monitoring tool that visualizes network 
+connections on Linux systems in real-time. Unlike traditional tools 
+like netstat and ss, ntomb presents connections through a Halloween-themed 
+graphical interface with coffins, ghosts, and pumpkins."""
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/ntomb", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/ntomb/", "644"],
+]
+
+# RPM package metadata (Fedora/RHEL/CentOS)
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/ntomb", dest = "/usr/bin/ntomb", mode = "755" },
+    { source = "README.md", dest = "/usr/share/doc/ntomb/README.md", mode = "644" },
+]
