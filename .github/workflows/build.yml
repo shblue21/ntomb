@@ -1,9 +1,10 @@
-name: Release
+name: Build
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -73,51 +74,3 @@ jobs:
           path: |
             ntomb-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
             ntomb-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
-
-  release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec mv {} release/ \;
-          cd release
-          cat *.sha256 > checksums.txt
-          ls -la
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: release/*
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-crates:
-    name: Publish to crates.io
-    needs: build
-    runs-on: ubuntu-latest
-    if: "!contains(github.ref_name, '-')"  # Skip pre-releases
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
