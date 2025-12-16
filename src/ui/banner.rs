@@ -16,7 +16,11 @@ pub fn render_banner(f: &mut Frame, area: Rect, app: &AppState) {
     // Get the appropriate stats label based on overdrive mode (Requirement 4.5)
     // When overdrive is enabled, use "Spirits" instead of "Total Souls"
     let stats_label = get_stats_label(app.graveyard_settings.overdrive_enabled);
-    let stats_text = format!("   [💀 {}: 128] [🩸 BPF Radar: ACTIVE]", stats_label);
+    let conn_count = app.connections.len();
+    let stats_text = format!(
+        "   [💀 {}: {}] [🩸 BPF Radar: TBD]",
+        stats_label, conn_count
+    );
 
     let banner_text = vec![
         Line::from(vec![Span::styled(

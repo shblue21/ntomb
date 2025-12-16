@@ -628,13 +628,11 @@ pub fn render_soul_inspector(f: &mut Frame, area: Rect, app: &AppState) {
         ]));
     }
 
-    // BPF line - refresh rate
+    // Scan interval line
     top_content.push(Line::from(vec![
-        Span::styled("  BPF:    ", Style::default().fg(Color::DarkGray)),
-        Span::styled("ACTIVE ", Style::default().fg(TOXIC_GREEN)),
-        Span::styled("(", Style::default().fg(Color::DarkGray)),
+        Span::styled("  SCAN:   ", Style::default().fg(Color::DarkGray)),
         Span::styled(format!("{}ms", view.refresh_ms), refresh_style),
-        Span::styled(")", Style::default().fg(Color::DarkGray)),
+        Span::styled(" interval", Style::default().fg(Color::DarkGray)),
     ]));
 
     // Title with suspicious warning if applicable
