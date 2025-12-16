@@ -75,12 +75,6 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
         },
         Hint {
             priority: 3,
-            key: "⇆ TAB:",
-            desc: "Switch Pane | ".to_string(),
-            color: NEON_PURPLE,
-        },
-        Hint {
-            priority: 3,
             key: "F1:",
             desc: "Help | ".to_string(),
             color: NEON_PURPLE,
@@ -109,14 +103,10 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
         }
     }
 
-    // Add toggle status indicators
+    // Add toggle status indicators (always show, they're important for debugging)
     let toggle_indicators = build_toggle_indicators(app);
-    let toggle_length: usize = toggle_indicators.iter().map(|s| s.content.len()).sum();
-
-    if current_length + toggle_length < available_width as usize {
-        spans.push(Span::raw(" "));
-        spans.extend(toggle_indicators);
-    }
+    spans.push(Span::raw(" "));
+    spans.extend(toggle_indicators);
 
     let status_text = Line::from(spans);
 
@@ -193,6 +183,21 @@ pub fn build_toggle_indicators(app: &AppState) -> Vec<Span<'static>> {
         Style::default()
             .fg(labels_color)
             .add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::styled("] ", Style::default().fg(BONE_WHITE)));
+
+    // Emoji width offset indicator [E:±N]
+    // Shows current emoji width offset for cross-platform debugging
+    let offset = app.graveyard_settings.emoji_width_offset;
+    let offset_str = if offset >= 0 {
+        format!("+{}", offset)
+    } else {
+        format!("{}", offset)
+    };
+    spans.push(Span::styled("[E:", Style::default().fg(BONE_WHITE)));
+    spans.push(Span::styled(
+        offset_str,
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
     ));
     spans.push(Span::styled("]", Style::default().fg(BONE_WHITE)));
 

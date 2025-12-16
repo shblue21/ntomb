@@ -87,6 +87,12 @@ pub struct GraveyardSettings {
 
     /// Enable Kiroween Overdrive theme (toggle with 'H' key)
     pub overdrive_enabled: bool,
+
+    /// Emoji width offset for cross-platform rendering correction
+    /// Positive: emoji renders wider than expected
+    /// Negative: emoji renders narrower than expected
+    /// Adjust with '[' and ']' keys
+    pub emoji_width_offset: i32,
 }
 
 impl Default for GraveyardSettings {
@@ -95,6 +101,7 @@ impl Default for GraveyardSettings {
             animations_enabled: true,
             labels_enabled: true,
             overdrive_enabled: false, // Off by default per requirements
+            emoji_width_offset: 0,    // Will be set from detection at startup
         }
     }
 }

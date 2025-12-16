@@ -21,7 +21,8 @@ use ratatui::{
     Frame,
 };
 use std::collections::HashMap;
-use unicode_width::UnicodeWidthStr;
+
+use super::emoji_width::{corrected_str_width_with_offset, emoji_centering_offset_with};
 
 // Latency ring constants for Graveyard visualization (Requirements 1.1, 1.6)
 // Ring radii in virtual canvas space (0-100)
@@ -1105,6 +1106,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
     let animation_reduced = app.animation_reduced;
     let labels_enabled = app.graveyard_settings.labels_enabled;
     let overdrive_enabled = app.graveyard_settings.overdrive_enabled;
+    let emoji_width_offset = app.graveyard_settings.emoji_width_offset;
 
     // Calculate canvas dimensions for proper aspect ratio
     // Braille markers: each cell is 2x4 dots, so we multiply accordingly
@@ -1265,8 +1267,10 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     _ => node.endpoint_type.color(),
                 };
 
-                // Center the icon using unicode width for accurate positioning
-                let icon_offset = icon.width() as f64 / 2.0;
+                // Center the icon using corrected width for accurate cross-platform positioning
+                // emoji_centering_offset_with() provides additional correction for emoji width differences
+                let icon_width = corrected_str_width_with_offset(&icon, emoji_width_offset) as f64;
+                let icon_offset = icon_width / 2.0 + emoji_centering_offset_with(emoji_width_offset);
                 ctx.print(
                     node.x - icon_offset,
                     node.y,
@@ -1275,8 +1279,8 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
 
                 if labels_enabled {
                     let label = format!("{} ({})", node.label, node.conn_count);
-                    // Use unicode width for accurate positioning with emoji
-                    let label_offset = label.width() as f64 / 2.0;
+                    // Use corrected width for accurate positioning with emoji
+                    let label_offset = corrected_str_width_with_offset(&label, emoji_width_offset) as f64 / 2.0;
                     ctx.print(
                         node.x - label_offset,
                         node.y - 4.0,
@@ -1292,7 +1296,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
                     GraveyardMode::Host => "The graveyard is quiet...",
                 };
 
-                let msg_offset = (empty_message.width() as f64 / 2.0) * 1.2;
+                let msg_offset = (corrected_str_width_with_offset(empty_message, emoji_width_offset) as f64 / 2.0) * 1.2;
                 ctx.print(
                     cx - msg_offset,
                     cy - 5.0,
@@ -1308,7 +1312,7 @@ pub fn render_network_map(f: &mut Frame, area: Rect, app: &AppState) {
             // Show "... and N more" indicator
             if hidden_endpoint_count > 0 {
                 let more_text = format!("... and {} more", hidden_endpoint_count);
-                let text_offset = (more_text.width() as f64 / 2.0) * 1.2;
+                let text_offset = (corrected_str_width_with_offset(&more_text, emoji_width_offset) as f64 / 2.0) * 1.2;
                 ctx.print(
                     cx - text_offset,
                     8.0,

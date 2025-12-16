@@ -47,11 +47,7 @@ pub fn handle_key_event(app: &mut AppState, key: KeyCode) -> bool {
             app.toggle_graveyard_mode();
             true
         }
-        // Switch panel with Tab (placeholder for now)
-        KeyCode::Tab => {
-            app.switch_panel();
-            true
-        }
+
         // Refresh rate controls (unified)
         // + = slower refresh (increase interval)
         // - = faster refresh (decrease interval)
@@ -79,6 +75,23 @@ pub fn handle_key_event(app: &mut AppState, key: KeyCode) -> bool {
         // Toggle endpoint labels (Requirements 3.6, 5.3)
         KeyCode::Char('t') | KeyCode::Char('T') => {
             app.graveyard_settings.labels_enabled = !app.graveyard_settings.labels_enabled;
+            true
+        }
+        // Adjust emoji width offset for cross-platform rendering
+        // '[' = decrease offset (emoji renders narrower)
+        // ']' = increase offset (emoji renders wider)
+        KeyCode::Char('[') => {
+            app.graveyard_settings.emoji_width_offset -= 1;
+            true
+        }
+        KeyCode::Char(']') => {
+            app.graveyard_settings.emoji_width_offset += 1;
+            true
+        }
+        // Reset emoji width offset to detected value
+        KeyCode::Char('\\') => {
+            app.graveyard_settings.emoji_width_offset =
+                crate::ui::emoji_width::get_detected_offset();
             true
         }
         _ => true,

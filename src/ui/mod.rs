@@ -4,6 +4,7 @@
 // The main draw() function orchestrates rendering of all UI panels.
 
 mod banner;
+pub mod emoji_width;
 mod graveyard;
 mod grimoire;
 mod inspector;

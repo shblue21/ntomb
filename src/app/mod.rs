@@ -98,6 +98,13 @@ impl AppState {
     /// Create a new AppState with default values
     pub fn new() -> Self {
         let now = Instant::now();
+        
+        // Get detected emoji width offset from the emoji_width module
+        let detected_offset = crate::ui::emoji_width::get_detected_offset();
+        
+        let mut graveyard_settings = GraveyardSettings::default();
+        graveyard_settings.emoji_width_offset = detected_offset;
+        
         let mut state = Self {
             running: true,
             selected_node: 0,
@@ -117,7 +124,7 @@ impl AppState {
             selected_connection: None,
             connection_list_state: ListState::default(),
             refresh_config: RefreshConfig::new(),
-            graveyard_settings: GraveyardSettings::default(),
+            graveyard_settings,
             latency_config: LatencyConfig::default(),
             last_frame_time: now,
             slow_frame_count: 0,
@@ -299,11 +306,7 @@ impl AppState {
         }
     }
 
-    /// Handle Tab key press (placeholder for future panel switching)
-    pub fn switch_panel(&mut self) {
-        // TODO: Implement panel switching logic
-        // For now, this is a placeholder
-    }
+
 
     /// Move connection selection up (decrease index)
     pub fn select_previous_connection(&mut self) {

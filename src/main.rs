@@ -18,6 +18,10 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 fn main() -> Result<()> {
+    // Detect emoji width before entering alternate screen
+    // This queries cursor position which requires the main terminal
+    let _emoji_config = ui::emoji_width::init_emoji_width_detection();
+    
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
