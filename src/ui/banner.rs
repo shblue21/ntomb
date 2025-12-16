@@ -52,7 +52,7 @@ pub fn render_banner(f: &mut Frame, area: Rect, app: &AppState) {
             ),
         ]),
         Line::from(vec![Span::styled(
-            "  | |\\  |  | | | |__| || |  | || |_ < ",
+            "  | |\\  |  | | | |__| || |  | || |_) |",
             Style::default().fg(Color::Rgb(168, 73, 255)),
         )]),
         Line::from(vec![
