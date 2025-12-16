@@ -51,7 +51,7 @@ Network endpoints are arranged radially around a central coffin (⚰️), with d
   - STATE: Active/listening connection status
   - CONN: Total connection count and PID
   - RISK: Suspicious connection detection (high-port, non-standard patterns)
-  - BPF: Refresh interval display
+  - SCAN: Refresh interval display
 - **Blockified Layout**: Information clearly organized by category
 
 ### 📊 Traffic History (Last 60s)
@@ -69,6 +69,11 @@ Network endpoints are arranged radially around a central coffin (⚰️), with d
 - **Enhanced Halloween Theme**: Toggleable enhanced visual effects with 'H' key
 - **Animations**: Dynamic visual effects like pulse and zombie blinking (toggle with 'A' key)
 - **Adaptive Performance**: Automatically reduces animation complexity when connection count is high
+
+### 🔧 Cross-Platform Emoji Rendering
+- **Auto-Detection**: Detects terminal emoji width at startup for accurate positioning
+- **Manual Adjustment**: Fine-tune with `[` / `]` keys if icons appear misaligned
+- **Environment Variables**: `NTOMB_EMOJI_WIDTH_OFFSET`, `NTOMB_ASCII_MODE` for customization
 
 ### ⌨️ Keyboard Navigation
 - **Intuitive Shortcuts**: Always displayed in the status bar at the bottom
@@ -153,19 +158,21 @@ ntomb
 | Key | Description |
 |-----|-------------|
 | `↑` / `↓` | Move up/down in connection list |
-| `Tab` | Switch panel (Graveyard ↔ Soul Inspector ↔ Grimoire) |
 | `P` | Toggle process focus (Host ↔ Process mode) |
 | `+` / `=` | Decrease refresh rate (increase interval) |
 | `-` / `_` | Increase refresh rate (decrease interval) |
 | `A` | Toggle animations (pulse, zombie blinking, etc.) |
 | `H` | Toggle Kiroween Overdrive mode (enhanced Halloween theme) |
 | `T` | Toggle endpoint labels (show/hide IP:port) |
+| `[` / `]` | Adjust emoji width offset (for cross-platform rendering) |
+| `\` | Reset emoji width offset to auto-detected value |
 | `Q` / `Esc` | Quit |
 
 **Status Bar Indicators:**
 - `[A:ON/OFF]` - Animation state
 - `[H:ON/OFF]` - Overdrive mode state
 - `[t:ON/OFF]` - Label display state
+- `[E:±N]` - Emoji width offset (for cross-platform compatibility)
 
 ---
 
@@ -234,7 +241,7 @@ ntomb
 - **Root Privileges**: sudo required to view process information of other users
 - **Terminal Size**: Minimum 80x24 recommended; smaller sizes may break layout
 - **Actual Byte Transfer**: Currently displays connection activity score only (kB/s not supported)
-- **BPF Integration**: eBPF-based real-time packet capture not yet implemented
+- **BPF Integration**: eBPF-based real-time packet capture not yet implemented (shown as "TBD" in UI)
 
 ### Planned Features
 
